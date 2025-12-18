@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.local
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+backend/dist/
+backend/build/
+backend/*.egg-info/
+backend/.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+docker/data/tinydb.json

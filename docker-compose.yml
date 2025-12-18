@@ -1,0 +1,25 @@
+services:
+  mcpzoo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcpzoo-dev
+    ports:
+      - "8001:8001"
+      - "8100-8199:8100-8199"
+    environment:
+      - APP_ENV=development
+      - APP_USERNAME=${APP_USERNAME:-admin}
+      - APP_PASSWORD=${APP_PASSWORD:-changeme123}
+      - DEBUG=true
+    volumes:
+      - ./docker/Procfile:/Procfile
+      - ./backend:/app/backend
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - mcpzoo-net
+
+networks:
+  mcpzoo-net:
+    driver: bridge

@@ -1,0 +1,29 @@
+[project]
+name = "mcpzoo-backend"
+version = "0.1.0"
+description = "MCPZoo Backend - MCP Server Management"
+requires-python = ">=3.10"
+authors = [{name = "MCPZoo Team"}]
+
+dependencies = [
+    "fastapi==0.109.0",
+    "uvicorn==0.27.0",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "tinydb==4.8.0",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "python-multipart==0.0.6",
+    "httpx==0.25.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "pytest-cov==4.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
