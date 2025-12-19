@@ -35,4 +35,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Data
+data/
+
+# Docker data
 docker/data/tinydb.json
