@@ -2,7 +2,18 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServers } from '../hooks/useServers'
 import { apiClient } from '../api/client'
-import { Table, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap'
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Loader2, Plus, RefreshCw, Trash2, Edit } from 'lucide-react'
 
 export function ServersPage() {
   const navigate = useNavigate()
@@ -37,91 +48,108 @@ export function ServersPage() {
 
   if (loading) {
     return (
-      <Container className="text-center py-5">
-        <Spinner animation="border" />
-      </Container>
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     )
   }
 
   return (
-    <Container className="py-4">
-      {error && <Alert variant="danger">{error}</Alert>}
-      {syncError && <Alert variant="danger">{syncError}</Alert>}
+    <div className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {syncError && (
+        <Alert variant="destructive">
+          <AlertTitle>Sync Error</AlertTitle>
+          <AlertDescription>{syncError}</AlertDescription>
+        </Alert>
+      )}
 
-      <Row className="align-items-center mb-4">
-        <Col>
-          <h2>MCP Server Configurations</h2>
-        </Col>
-        <Col className="text-end">
-          <Button 
-            variant="primary" 
-            className="me-2" 
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">MCP Server Configurations</h1>
+          <p className="text-muted-foreground">Manage your MCP server instances and their configurations.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
             onClick={() => navigate('/servers/new')}
           >
-            + Add Server
+            <Plus className="mr-2 h-4 w-4" /> Add Server
           </Button>
-          <Button 
-            variant="info" 
-            onClick={handleSync} 
+          <Button
+            variant="secondary"
+            onClick={handleSync}
             disabled={syncing || servers.length === 0}
             title="Write all configs to disk and restart supervisord"
           >
-            {syncing ? 'Syncing...' : '🔄 Sync Processes'}
+            {syncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Sync Processes
           </Button>
-        </Col>
-      </Row>
+        </div>
+      </div>
 
       {servers.length === 0 ? (
-        <Alert variant="info">
-          No servers configured. <a href="/servers/new">Add one to get started.</a>
+        <Alert>
+          <AlertTitle>No servers found</AlertTitle>
+          <AlertDescription>
+            You haven't configured any MCP servers yet. <Button variant="link" className="p-0 h-auto" onClick={() => navigate('/servers/new')}>Add your first server</Button> to get started.
+          </AlertDescription>
         </Alert>
       ) : (
-        <div className="table-responsive">
-          <Table striped bordered hover>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Transport</th>
-                <th>Port</th>
-                <th>Created</th>
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Transport</TableHead>
+                <TableHead>Port</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {servers.map((server) => (
-                <tr key={server.id}>
-                  <td className="fw-bold">{server.name}</td>
-                  <td>
-                    <span className="badge bg-secondary">{server.transport}</span>
-                  </td>
-                  <td>{server.port}</td>
-                  <td className="small text-muted">
+                <TableRow key={server.id}>
+                  <TableCell className="font-medium">{server.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{server.transport}</Badge>
+                  </TableCell>
+                  <TableCell>{server.port}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
                     {new Date(server.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="text-center">
-                    <Button 
-                      size="sm" 
-                      variant="primary" 
-                      className="me-2"
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() => navigate(`/servers/${server.id}/edit`)}
                     >
-                      Edit
+                      <Edit className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      size="sm" 
-                      variant="danger"
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
                       onClick={() => handleDeleteServer(server.id, server.name)}
                     >
-                      Delete
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
+            </TableBody>
           </Table>
         </div>
       )}
-    </Container>
+    </div>
   )
 }
-

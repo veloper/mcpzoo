@@ -3,7 +3,17 @@ import { useServers } from '../hooks/useServers'
 import { ServerForm } from './ServerForm'
 import { LogViewer } from './LogViewer'
 import { apiClient } from '../api/client'
-import { Table, Button, Container, Row, Col } from 'react-bootstrap'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Loader2, RefreshCw, FileText, Trash2, Edit } from 'lucide-react'
 
 export function ServersList() {
   const { servers, loading, error, deleteServer, fetchServers } = useServers()
@@ -28,26 +38,59 @@ export function ServersList() {
     }
   }
 
-  if (loading) return <div>Loading servers...</div>
-  if (error) return <div className="alert alert-danger">{error}</div>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
 
   return (
-    <Container>
-      <Row className="align-items-center mb-3">
-        <Col>
-          <h2>MCP Server Configurations</h2>
-        </Col>
-        <Col className="text-end">
-          <Button variant="primary" className="me-2" onClick={() => setShowForm(!showForm)} disabled={syncing}>
+    <div className="container py-8 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">MCP Server Configurations</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant={showForm ? 'outline' : 'default'}
+            onClick={() => setShowForm(!showForm)}
+            disabled={syncing}
+          >
             {showForm ? 'Cancel' : '+ Add Server'}
           </Button>
-          <Button variant="secondary" onClick={handleSync} disabled={syncing || servers.length === 0} title="Write all configs to disk and restart supervisord">
-            {syncing ? 'Syncing...' : '🔄 Sync Processes'}
+          <Button
+            variant="secondary"
+            onClick={handleSync}
+            disabled={syncing || servers.length === 0}
+            title="Write all configs to disk and restart supervisord"
+          >
+            {syncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Sync Processes
           </Button>
-        </Col>
-      </Row>
+        </div>
+      </div>
 
-      {syncError && <div className="alert alert-danger">{syncError}</div>}
+      {syncError && (
+        <Alert variant="destructive">
+          <AlertTitle>Sync Error</AlertTitle>
+          <AlertDescription>{syncError}</AlertDescription>
+        </Alert>
+      )}
 
       {showForm && (
         <ServerForm
@@ -72,45 +115,69 @@ export function ServersList() {
       )}
 
       {servers.length === 0 ? (
-        <p className="text-muted">No servers configured. Add one to get started.</p>
+        <Alert>
+          <AlertDescription>
+            No servers configured. Add one to get started.
+          </AlertDescription>
+        </Alert>
       ) : (
-        <Table striped bordered hover responsive>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Transport</th>
-              <th>Port</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {servers.map((server) => (
-              <tr key={server.id}>
-                <td>{server.name}</td>
-                <td>{server.transport}</td>
-                <td>{server.port}</td>
-                <td>{new Date(server.created_at).toLocaleDateString()}</td>
-                <td>
-                  <Button size="sm" variant="info" className="me-2" onClick={() => { setEditingId(server.id); setShowForm(true) }}>Edit</Button>
-                  <Button size="sm" variant="secondary" className="me-2" onClick={() => setViewingLogs(server.id)}>📋 Logs</Button>
-                  <Button size="sm" variant="danger" onClick={() => { if (confirm(`Delete server "${server.name}"?`)) { deleteServer(server.id) } }}>Delete</Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Transport</TableHead>
+                <TableHead>Port</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {servers.map((server) => (
+                <TableRow key={server.id}>
+                  <TableCell className="font-medium">{server.name}</TableCell>
+                  <TableCell>{server.transport}</TableCell>
+                  <TableCell>{server.port}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {new Date(server.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingId(server.id)
+                        setShowForm(true)
+                      }}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setViewingLogs(server.id)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (confirm(`Delete server "${server.name}"?`)) {
+                          deleteServer(server.id)
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
-
-      <div className="info-box">
-        <h4>💡 How it works:</h4>
-        <ol>
-          <li>Add server configurations</li>
-          <li>Click <strong>"Sync Processes"</strong> to write configs to disk</li>
-          <li>supervisord automatically restarts the MCP servers group</li>
-          <li>Monitor processes in the "Processes" tab</li>
-        </ol>
-      </div>
-    </Container>
+    </div>
   )
 }

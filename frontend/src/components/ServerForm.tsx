@@ -1,6 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { apiClient } from '../api/client'
-import { Form, Button, Container, Row, Col, Alert, Badge, Tab, Tabs } from 'react-bootstrap'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Loader2, Download } from 'lucide-react'
+import { BasicTab } from './form/BasicTab'
+import { ProcessTab } from './form/ProcessTab'
+import { ToolsTab } from './form/ToolsTab'
+import { TasksTab } from './form/TasksTab'
+import { EnvironmentTab } from './form/EnvironmentTab'
 
 interface SupervisorConf {
   name: string
@@ -64,7 +72,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio')
   const [command, setCommand] = useState('')
   const [url, setUrl] = useState('')
-  const [arguments_, setArguments] = useState('')
+  const [args, setArgs] = useState<string[]>([])
   const [port, setPort] = useState<number | null>(null)
   const [autostart, setAutostart] = useState(true)
   const [autorestart, setAutorestart] = useState('unexpected')
@@ -77,19 +85,24 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [numprocs, setNumprocs] = useState(1)
   const [taskInstall, setTaskInstall] = useState('')
   const [taskUninstall, setTaskUninstall] = useState('')
-  const [taskRun, setTaskRun] = useState('')
   const [envVars, setEnvVars] = useState<Record<string, string>>({})
   const [tools, setTools] = useState<MiseTool[]>([])
-  const [toolInput, setToolInput] = useState('')
+  const [toolName, setToolName] = useState('')
+  const [toolVersion, setToolVersion] = useState('')
   const [toolError, setToolError] = useState('')
   const [toolValidating, setToolValidating] = useState(false)
+  const [toolTyping, setToolTyping] = useState(false)
   const [toolValid, setToolValid] = useState<boolean | null>(null)
+  const [availableVersions, setAvailableVersions] = useState<string[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
   const [envKey, setEnvKey] = useState('')
   const [envValue, setEnvValue] = useState('')
+  const [logLevel, setLogLevel] = useState('INFO')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const nameRegex = /^[a-zA-Z0-9\-_]+$/
+  const toolValidationTimer = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (editingId) {
@@ -111,7 +124,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
           setCommand(server.command || '')
           setUrl(server.url || '')
           setPort(server.port || null)
-          setArguments(Array.isArray(server.arguments) ? server.arguments.join(' ') : '')
+          setArgs(Array.isArray(server.arguments) ? server.arguments : [])
 
           // Load supervisor config
           console.log('Loading supervisor config...')
@@ -143,7 +156,6 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
           console.log('Loading tasks...')
           setTaskInstall(server.task_install || '')
           setTaskUninstall(server.task_uninstall || '')
-          setTaskRun(server.task_run || '')
 
           // Load envs
           console.log('Loading envs...')
@@ -173,17 +185,18 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   }
 
   const handleAddTool = async () => {
-    if (toolInput.trim()) {
-      const [n, v] = toolInput.split(':')
-      const toolName = n.trim()
-      
+    if (toolName.trim()) {
+      const toolSpec = toolVersion.trim() ? `${toolName.trim()}:${toolVersion.trim()}` : toolName.trim()
+
       setToolValidating(true)
       setToolError('')
       try {
-        const response = await apiClient.get(`/tools/mise/check/${toolName}`)
+        const response = await apiClient.get(`/tools/mise/check/${encodeURIComponent(toolSpec)}`)
         if (response.available) {
-          setTools([...tools, { name: toolName, version: v?.trim() }])
-          setToolInput('')
+          setTools([...tools, { name: toolName.trim(), version: toolVersion.trim() || undefined }])
+          setToolName('')
+          setToolVersion('')
+          setToolValid(null) // Reset validation state
         } else {
           setToolError(`Tool "${toolName}" not found in mise: ${response.error}`)
         }
@@ -195,20 +208,29 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
     }
   }
 
-  const handleToolInputChange = async (value: string) => {
-    console.log('Tool input changed to!!!:', value)
-    setToolInput(value)
+  const handleToolNameChange = (value: string) => {
+    setToolName(value)
     setToolValid(null)
     setToolError('')
 
-    if (!value.includes(':')) {
-      // Validate tool name on input
-      const toolName = value.trim()
-      if (toolName && toolName.length >= 2) {
+    // Clear existing timer
+    if (toolValidationTimer.current) {
+      clearTimeout(toolValidationTimer.current)
+    }
 
+    const name = value.trim()
+    const version = toolVersion.trim()
+    const toolSpec = version ? `${name}:${version}` : name
+
+    if (name && name.length >= 2) {
+      // Start typing indicator immediately
+      setToolTyping(true)
+
+      // Set debounced validation
+      toolValidationTimer.current = setTimeout(async () => {
         setToolValidating(true)
         try {
-          const response = await apiClient.get(`/tools/mise/check/${toolName}`)
+          const response = await apiClient.get(`/tools/mise/check/${encodeURIComponent(toolSpec)}`)
           console.log('Tool validation response:', response)
 
           let data = response
@@ -225,8 +247,12 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
 
           if (data && typeof data === 'object' && 'available' in data) {
             setToolValid(data.available)
-            if (!data.available) {
-              setToolError(`"${toolName}" is not a valid mise tool`)
+            if (data.available) {
+              // Tool is valid, fetch available versions
+              fetchToolVersions(name)
+            } else {
+              setToolError(`"${name}" is not a valid mise tool`)
+              setAvailableVersions([])
             }
           } else {
             console.error('Invalid response format:', data)
@@ -238,14 +264,56 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                               err.response?.data?.message ||
                               err.message ||
                               'Unknown error'
-          setToolError(`Failed to validate "${toolName}": ${errorMessage}`)
+          setToolError(`Failed to validate "${name}": ${errorMessage}`)
         } finally {
           setToolValidating(false)
+          setToolTyping(false)
+        }
+      }, 750)
+    } else {
+      // Reset states for short input
+      setToolTyping(false)
+      setToolValidating(false)
+    }
+  }
+
+  const handleToolVersionChange = (value: string) => {
+    setToolVersion(value)
+    // Re-validate if we have a tool name
+    if (toolName.trim()) {
+      handleToolNameChange(toolName)
+    }
+  }
+
+  const fetchToolVersions = async (toolName: string) => {
+    setVersionsLoading(true)
+    try {
+      const response = await apiClient.get(`/tools/mise/versions/${encodeURIComponent(toolName)}`)
+      console.log('Tool versions response:', response)
+
+      let data = response
+      if (typeof response === 'object' && response.data) {
+        data = response.data
+      } else if (typeof response === 'string') {
+        try {
+          data = JSON.parse(response)
+        } catch (e) {
+          console.error('Failed to parse versions response as JSON:', response)
+          throw new Error('Invalid API response format')
         }
       }
-    } else {
-      // Reset validation for versioned tools (validate on add)
-      setToolValidating(false)
+
+      if (data && typeof data === 'object' && 'versions' in data) {
+        setAvailableVersions(Array.isArray(data.versions) ? data.versions : [])
+      } else {
+        console.error('Invalid versions response format:', data)
+        setAvailableVersions([])
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch tool versions:', err)
+      setAvailableVersions([])
+    } finally {
+      setVersionsLoading(false)
     }
   }
 
@@ -311,12 +379,11 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
         // Port will be assigned by backend on save
         command: transport === 'stdio' ? command.trim() : undefined,
         url: transport !== 'stdio' ? url.trim() : undefined,
-        arguments: arguments_.trim() ? arguments_.split(/\s+/).filter(Boolean) : [],
+        arguments: args.length > 0 ? args : undefined,
         supervisor_conf: supervisorConf,
         tools: tools && tools.length > 0 ? tools : [],
         task_install: taskInstall.trim() || undefined,
         task_uninstall: taskUninstall.trim() || undefined,
-        task_run: taskRun.trim() || undefined,
         envs: Object.keys(envVars).length > 0 ? envVars : {},
         created_at: editingId ? undefined : new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -344,294 +411,164 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   }
 
   return (
-    <Container className="py-4">
-      <Row>
-        <Col lg={8}>
-          <h3 className="mb-4">{editingId ? 'Edit Server' : 'Add New MCP Server'}</h3>
+    <div>
+        <div className="max-w-7xl">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">
+            {editingId ? 'Edit Server' : 'Add New MCP Server'}
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Configure your Model Context Protocol server instance.
+          </p>
+        </div>
 
-          {error && <Alert variant="danger">{error}</Alert>}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          <Form onSubmit={handleSubmit}>
-            <Tabs defaultActiveKey="basic" className="mb-4">
-              <Tab eventKey="basic" title="Basic Configuration">
-                {/* Basic Info */}
-                <Form.Group className="mb-3">
-                  <Form.Label>Server Name *</Form.Label>
-                  <Form.Control
-                    value={name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="my-server"
-                    isInvalid={!!nameError}
-                    required
-                  />
-                  {nameError && <Form.Control.Feedback type="invalid">{nameError}</Form.Control.Feedback>}
-                </Form.Group>
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="flex gap-6">
+            <div className="flex-1">
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="basic">Basic</TabsTrigger>
+                  <TabsTrigger value="process">Process</TabsTrigger>
+                  <TabsTrigger value="tools">Tools</TabsTrigger>
+                  <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                </TabsList>
 
-                <Row>
-                  <Col md={12}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Transport Type *</Form.Label>
-                      <Form.Select value={transport} onChange={(e) => setTransport(e.target.value as any)} required>
-                        <option value="stdio">stdio (Standard I/O)</option>
-                        <option value="http">http (HTTP)</option>
-                        <option value="sse">sse (Server-Sent Events)</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                </Row>
+            <TabsContent value="basic">
+              <BasicTab
+                name={name}
+                nameError={nameError}
+                transport={transport}
+                command={command}
+                url={url}
+                args={args}
+                port={port}
+                logLevel={logLevel}
+                envVars={envVars}
+                envKey={envKey}
+                envValue={envValue}
+                onNameChange={handleNameChange}
+                onTransportChange={(v) => setTransport(v as any)}
+                onCommandChange={setCommand}
+                onUrlChange={setUrl}
+                onArgsChange={setArgs}
+                onLogLevelChange={setLogLevel}
+                onEnvKeyChange={setEnvKey}
+                onEnvValueChange={setEnvValue}
+                onAddEnv={handleAddEnv}
+                onRemoveEnv={handleRemoveEnv}
+              />
+            </TabsContent>
 
-                {/* Transport-specific config */}
-                {transport === 'stdio' && (
-                  <Form.Group className="mb-3">
-                    <Form.Label>Command *</Form.Label>
-                    <Form.Control value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python server.py" required />
-                  </Form.Group>
-                )}
 
-                {transport !== 'stdio' && (
-                  <Form.Group className="mb-3">
-                    <Form.Label>URL *</Form.Label>
-                    <Form.Control type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:8080" required />
-                  </Form.Group>
-                )}
 
-                {transport === 'stdio' && (
-                  <Form.Group className="mb-3">
-                    <Form.Label>Arguments</Form.Label>
-                    <Form.Control value={arguments_} onChange={(e) => setArguments(e.target.value)} placeholder="--option value" />
-                    <Form.Text>Space-separated arguments</Form.Text>
-                  </Form.Group>
-                )}
+            <TabsContent value="process">
+              <ProcessTab
+                autostart={autostart}
+                autorestart={autorestart}
+                startsecs={startsecs}
+                startretries={startretries}
+                priority={priority}
+                numprocs={numprocs}
+                stopsignal={stopsignal}
+                stopwaitsecs={stopwaitsecs}
+                redirectStderr={redirectStderr}
+                onAutostart={setAutostart}
+                onAutorestart={setAutorestart}
+                onStartsecs={setStartsecs}
+                onStartretries={setStartretries}
+                onPriority={setPriority}
+                onNumprocs={setNumprocs}
+                onStopsignal={setStopsignal}
+                onStopwaitsecs={setStopwaitsecs}
+                onRedirectStderr={setRedirectStderr}
+              />
+            </TabsContent>
 
-                {/* Working Directory and Program Name */}
-                <Form.Group className="mb-3">
-                  <Form.Label>Working Directory</Form.Label>
-                  <Form.Control
-                    value={name ? `/app/servers/${name}` : ''}
-                    disabled
-                    placeholder="/app/servers/{name}"
-                  />
-                  <Form.Text>Auto-generated based on server name</Form.Text>
-                </Form.Group>
+            <TabsContent value="tools">
+              <ToolsTab
+                tools={tools}
+                toolName={toolName}
+                toolVersion={toolVersion}
+                toolError={toolError}
+                toolValid={toolValid}
+                toolValidating={toolValidating}
+                toolTyping={toolTyping}
+                availableVersions={availableVersions}
+                versionsLoading={versionsLoading}
+                onToolNameChange={handleToolNameChange}
+                onToolVersionChange={handleToolVersionChange}
+                onAddTool={handleAddTool}
+                onRemoveTool={handleRemoveTool}
+              />
+            </TabsContent>
 
-                <Form.Group className="mb-3">
-                  <Form.Label>Program Name</Form.Label>
-                  <Form.Control
-                    value={name ? `mcp_${name}` : ''}
-                    disabled
-                    placeholder="mcp_{name}"
-                  />
-                  <Form.Text>Auto-generated based on server name</Form.Text>
-                </Form.Group>
+            <TabsContent value="tasks">
+              <TasksTab
+                taskInstall={taskInstall}
+                taskUninstall={taskUninstall}
+                onTaskInstallChange={setTaskInstall}
+                onTaskUninstallChange={setTaskUninstall}
+              />
+            </TabsContent>
+              </Tabs>
+            </div>
 
-                <Form.Group className="mb-3">
-                  <Form.Label>Port</Form.Label>
-                  <Form.Control
-                    value={port !== null ? port : 'auto'}
-                    disabled
-                  />
-                  <Form.Text>{port !== null ? 'Assigned port' : 'Will be auto-assigned on save'}</Form.Text>
-                </Form.Group>
-              </Tab>
-
-              <Tab eventKey="process" title="Process Management">
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Check
-                        type="checkbox"
-                        label="Autostart"
-                        checked={autostart}
-                        onChange={(e) => setAutostart(e.target.checked)}
-                      />
-                      <Form.Text>Start process when supervisord starts</Form.Text>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Autorestart Policy</Form.Label>
-                      <Form.Select value={autorestart} onChange={(e) => setAutorestart(e.target.value)}>
-                        <option value="false">Never</option>
-                        <option value="true">Always</option>
-                        <option value="unexpected">On unexpected exit</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                <Row>
-                  <Col md={3}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Start Secs</Form.Label>
-                      <Form.Control type="number" value={startsecs} onChange={(e) => setStartsecs(parseInt(e.target.value))} min={1} />
-                      <Form.Text>Seconds to stay up to consider started</Form.Text>
-                    </Form.Group>
-                  </Col>
-                  <Col md={3}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Start Retries</Form.Label>
-                      <Form.Control type="number" value={startretries} onChange={(e) => setStartretries(parseInt(e.target.value))} min={0} />
-                      <Form.Text>Retries before giving up</Form.Text>
-                    </Form.Group>
-                  </Col>
-                  <Col md={3}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Priority</Form.Label>
-                      <Form.Control type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value))} min={1} max={999} />
-                      <Form.Text>Lower = starts first</Form.Text>
-                    </Form.Group>
-                  </Col>
-                  <Col md={3}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Numprocs</Form.Label>
-                      <Form.Control type="number" value={numprocs} onChange={(e) => setNumprocs(parseInt(e.target.value))} min={1} />
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                <Row>
-                  <Col md={4}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Stop Signal</Form.Label>
-                      <Form.Select value={stopsignal} onChange={(e) => setStopsignal(e.target.value)}>
-                        <option value="TERM">TERM</option>
-                        <option value="QUIT">QUIT</option>
-                        <option value="INT">INT</option>
-                        <option value="KILL">KILL</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                  <Col md={4}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Stop Wait (secs)</Form.Label>
-                      <Form.Control type="number" value={stopwaitsecs} onChange={(e) => setStopwaitsecs(parseInt(e.target.value))} min={1} />
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                <Form.Group className="mb-3">
-                  <Form.Check
-                    type="checkbox"
-                    label="Redirect stderr to stdout"
-                    checked={redirectStderr}
-                    onChange={(e) => setRedirectStderr(e.target.checked)}
-                  />
-                </Form.Group>
-              </Tab>
-
-              <Tab eventKey="tools" title="Tools & Dependencies">
-                <div className="mb-3">
-                  <Form.Label>Add Tool</Form.Label>
-                  <div className="d-flex gap-2">
-                    <div className="flex-grow-1 position-relative">
-                      <Form.Control
-                        value={toolInput}
-                        onChange={(e) => handleToolInputChange((e.target as HTMLInputElement).value)}
-                        placeholder="python:3.10"
-                        isInvalid={!!toolError}
-                        isValid={toolValid === true}
-                      />
-                      {toolValidating && (
-                        <div className="position-absolute top-50 end-0 translate-middle-y me-3">
-                          <div className="spinner-border spinner-border-sm text-secondary" role="status">
-                            <span className="visually-hidden">Validating...</span>
-                          </div>
-                        </div>
-                      )}
+              {/* Computed Values Sidebar */}
+              <div className="w-80 space-y-4">
+                <Button className="w-full h-10 text-sm font-medium">
+                  <Download className="mr-2 h-5 w-5" />
+                  Import
+                </Button>
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Computed Values</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Working Directory</label>
+                      <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
+                        {name ? `/app/servers/${name}` : '/app/servers/{name}'}
+                      </div>
                     </div>
-                    <Button variant="secondary" onClick={handleAddTool} disabled={toolValidating}>
-                      {toolValidating ? 'Validating...' : 'Add'}
-                    </Button>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Program Name</label>
+                      <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
+                        {name ? `mcp_${name}` : 'mcp_{name}'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Port</label>
+                      <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
+                        {port !== null ? port.toString() : 'auto-assigned'}
+                      </div>
+                    </div>
                   </div>
-                  {toolError && <Form.Text className="text-danger">{toolError}</Form.Text>}
-                  <Form.Text>Tool name and optional version (e.g., python:3.10, node:20)</Form.Text>
                 </div>
-
-                {tools.length > 0 && (
-                  <div className="mb-3">
-                    {tools.map((t, i) => (
-                      <Badge key={i} bg="light" text="dark" className="me-2 mb-2">
-                        {t.name}{t.version ? `:${t.version}` : ''}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTool(i)}
-                          className="btn-close btn-sm ms-2"
-                          style={{ fontSize: '0.7rem' }}
-                        />
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </Tab>
-
-              <Tab eventKey="environment" title="Environment & Tasks">
-                <h6 className="mb-3">Installation & Execution Tasks</h6>
-
-                <Form.Group className="mb-3">
-                  <Form.Label>Install Task</Form.Label>
-                  <Form.Control value={taskInstall} onChange={(e) => setTaskInstall(e.target.value)} placeholder="pip install mcp-server" />
-                </Form.Group>
-
-                <Form.Group className="mb-3">
-                  <Form.Label>Uninstall Task</Form.Label>
-                  <Form.Control value={taskUninstall} onChange={(e) => setTaskUninstall(e.target.value)} placeholder="pip uninstall mcp-server -y" />
-                </Form.Group>
-
-                <Form.Group className="mb-3">
-                  <Form.Label>Run Task</Form.Label>
-                  <Form.Control value={taskRun} onChange={(e) => setTaskRun(e.target.value)} placeholder="python server.py" />
-                  <Form.Text>Custom run command (optional override)</Form.Text>
-                </Form.Group>
-
-                <hr />
-
-                <h6 className="mb-3">Environment Variables</h6>
-
-                {Object.entries(envVars).map(([k, v]) => (
-                  <div key={k} className="d-flex gap-2 mb-2 align-items-center">
-                    <Form.Control value={k} disabled size="sm" style={{ flex: 1 }} />
-                    <Form.Control value={v} disabled size="sm" style={{ flex: 1 }} />
-                    <Button size="sm" variant="outline-danger" onClick={() => handleRemoveEnv(k)}>Remove</Button>
-                  </div>
-                ))}
-
-                <div className="d-flex gap-2 mb-3">
-                  <Form.Control
-                    value={envKey}
-                    onChange={(e) => setEnvKey(e.target.value)}
-                    placeholder="KEY"
-                    size="sm"
-                    style={{ flex: 1 }}
-                  />
-                  <Form.Control
-                    value={envValue}
-                    onChange={(e) => setEnvValue(e.target.value)}
-                    placeholder="VALUE"
-                    size="sm"
-                    style={{ flex: 1 }}
-                  />
-                  <Button size="sm" variant="secondary" onClick={handleAddEnv}>Add</Button>
-                </div>
-              </Tab>
-            </Tabs>
+              </div>
+            </div>
 
             {/* Actions */}
-            <div className="d-flex gap-2 align-items-center border-top pt-3">
-              <Button type="submit" variant="primary" disabled={loading}>
-                {loading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Saving...
-                  </>
-                ) : (
-                  editingId ? 'Update Server' : 'Create Server'
-                )}
+            <div className="flex gap-2 border-t pt-6">
+              <Button type="submit" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingId ? 'Update Server' : 'Create Server'}
               </Button>
-              <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
             </div>
-          </Form>
-        </Col>
-      </Row>
-    </Container>
+          </form>
+      </div>
+    </div>
   )
 }

@@ -1,7 +1,8 @@
 import React from 'react'
 import { useServers } from '../hooks/useServers'
 import { useProcesses } from '../hooks/useProcesses'
-import { Container, Row, Col, Card, Alert, Spinner } from 'react-bootstrap'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Loader2, Server, Activity } from 'lucide-react'
 
 export function HomePage() {
   const { servers, loading: serversLoading } = useServers()
@@ -12,54 +13,63 @@ export function HomePage() {
 
   if (serversLoading || processesLoading) {
     return (
-      <div className="text-center py-5">
-        <Spinner animation="border" />
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
   return (
-    <Container className="py-4">
-      <section className="mb-5">
-        <h1 className="display-4 mb-2">Welcome to MCPZoo</h1>
-        <p className="lead text-muted">Manage your MCP servers with ease</p>
+    <div className="space-y-8">
+      <section className="space-y-2">
+        <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">Welcome to MCPZoo</h1>
+        <p className="text-xl text-muted-foreground">Manage your Model Context Protocol servers from a single docker container.</p>
       </section>
 
-      <section className="mb-5">
-        <Row>
-          <Col lg={6} className="mb-3">
-            <Card className="h-100">
-              <Card.Body>
-                <Card.Title>Server Configurations</Card.Title>
-                <div className="display-6 fw-bold text-primary">{totalServers}</div>
-                <p className="text-muted small mt-2">Total servers configured</p>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col lg={6} className="mb-3">
-            <Card className="h-100">
-              <Card.Body>
-                <Card.Title>Running Processes</Card.Title>
-                <div className="display-6 fw-bold text-success">{runningProcesses}</div>
-                <p className="text-muted small mt-2">Currently active processes</p>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      </section>
-
-      <section>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <Card.Body>
-            <Card.Title className="mb-3">Quick Actions</Card.Title>
-            <div className="d-flex gap-2 flex-wrap">
-              <a href="/servers" className="btn btn-primary">Manage Servers</a>
-              <a href="/processes" className="btn btn-secondary">View Processes</a>
-            </div>
-          </Card.Body>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Total Servers
+            </CardTitle>
+            <Server className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalServers}</div>
+            <p className="text-xs text-muted-foreground">
+              Configured in the zoo
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Active Processes
+            </CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{runningProcesses}</div>
+            <p className="text-xs text-muted-foreground">
+              Currently running in supervisord
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Quick Start</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              To get started, head over to the <strong>Servers</strong> tab to configure your MCP server instances.
+              Once configured, click <strong>Sync Processes</strong> to generate the supervisor configurations and start the servers.
+            </p>
+          </CardContent>
         </Card>
       </section>
-    </Container>
+    </div>
   )
 }
-

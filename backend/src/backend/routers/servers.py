@@ -8,7 +8,7 @@ from src.backend.auth import verify_token
 from src.backend.models import MCPServerConfig
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
-from src.backend.services.supervisord import get_supervisord_service
+from src.backend.services.supervisord import SupervisordService, get_supervisord_service
 from tinydb import Query
 
 
@@ -37,7 +37,7 @@ async def list_servers(
 async def sync_processes(
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
-    supervisor_service = Depends(get_supervisord_service),
+    supervisor_service: SupervisordService = Depends(get_supervisord_service),
 ):
     """
     CRITICAL: Write all server configs to disk and restart supervisord MCP group.
@@ -82,6 +82,33 @@ async def create_server(
     server_dict["id"] = server_id
     server_dict["created_at"] = datetime.now().isoformat()
     server_dict["updated_at"] = datetime.now().isoformat()
+
+    # Always assign port for all transports (ignore any port in request)
+    transport = server_dict.get("transport")
+    if transport:
+        # Get all existing servers to check assigned ports
+        async with db_service as db:
+            servers_table = db.table('servers')
+            existing_servers = servers_table.all()
+
+        # Collect ports already assigned to other servers
+        assigned_ports = set()
+        for existing_server in existing_servers:
+            if existing_server.get("port"):
+                assigned_ports.add(existing_server["port"])
+
+        # Find first available port in 8100-8199 range
+        for port in range(8100, 8200):  # 8100 to 8199 inclusive
+            if port not in assigned_ports:
+                server_dict["port"] = port
+                break
+        else:
+            # All ports in range are assigned
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No available ports in range 8100-8199",
+            )
+
     async with db_service as db:
         servers_table = db.table('servers')
         servers_table.insert(server_dict)
@@ -129,15 +156,45 @@ async def update_server(
     async with db_service as db:
         servers_table = db.table('servers')
         Server = Query()
-        if not servers_table.get(Server.id == server_id):
+        existing_server = servers_table.get(Server.id == server_id)
+        if not existing_server:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Server not found",
             )
-        
+
         server_dict = server.copy() if isinstance(server, dict) else server.model_dump()
         server_dict["id"] = server_id
         server_dict["updated_at"] = datetime.now().isoformat()
+
+        # Always assign port for all transports (ignore any port in request)
+        transport = server_dict.get("transport")
+        if transport:
+            logger.info("Auto-assigning port for update")
+            # Get all existing servers to check assigned ports
+            existing_servers = servers_table.all()
+
+            # Collect ports already assigned to other servers (exclude current server)
+            assigned_ports = set()
+            for srv in existing_servers:
+                if srv.get("id") != server_id and srv.get("port"):
+                    assigned_ports.add(srv["port"])
+
+            logger.info(f"Assigned ports: {assigned_ports}")
+
+            # Find first available port in 8100-8199 range
+            for port in range(8100, 8200):  # 8100 to 8199 inclusive
+                if port not in assigned_ports:
+                    server_dict["port"] = port
+                    logger.info(f"Assigned port {port}")
+                    break
+            else:
+                # All ports in range are assigned
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No available ports in range 8100-8199",
+                )
+
         servers_table.update(server_dict, Server.id == server_id)
     return {"id": server_id, **server_dict}
 
@@ -184,7 +241,7 @@ async def start_server(
     server_id: str,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
-    srv = Depends(get_supervisord_service),
+    srv: SupervisordService = Depends(get_supervisord_service),
 ):
     """Start MCP server process."""
     async with db_service as db:
@@ -219,7 +276,7 @@ async def stop_server(
     server_id: str,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
-    srv = Depends(get_supervisord_service),
+    srv: SupervisordService = Depends(get_supervisord_service),
 ):
     """Stop MCP server process."""
     async with db_service as db:
@@ -254,7 +311,7 @@ async def restart_server(
     server_id: str,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
-    srv = Depends(get_supervisord_service),
+    srv: SupervisordService = Depends(get_supervisord_service),
 ):
     """Restart MCP server process."""
     async with db_service as db:
@@ -289,7 +346,7 @@ async def get_server_status(
     server_id: str,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
-    srv = Depends(get_supervisord_service),
+    srv: SupervisordService = Depends(get_supervisord_service),
 ):
     """Get current status of MCP server process."""
     async with db_service as db:
@@ -340,3 +397,51 @@ async def delete_server(
             )
         servers_table.remove(Server.id == server_id)
     return None
+
+@router.get("/mcp-config", response_model=dict)
+async def get_mcp_config(
+    username: str = Depends(verify_token),
+    db_service: DatabaseService = Depends(get_database_service),
+):
+    """Generate mcpServer.json configuration for FastMCP proxy server."""
+    async with db_service as db:
+        servers_table = db.table('servers')
+        servers = servers_table.all()
+
+    mcp_servers = {}
+
+    for server in servers:
+        server_name = server.get("name", "")
+        transport = server.get("transport", "")
+        port = server.get("port")
+
+        if not server_name or not transport:
+            continue
+
+        if transport == "stdio":
+            # For stdio servers, FastMCP runs the actual MCP server command
+            command = server.get("command", "")
+            arguments = server.get("arguments", [])
+
+            if command:
+                # Build the command array as configured in MCPZoo
+                cmd_parts = [command]
+                if arguments:
+                    cmd_parts.extend(arguments)
+
+                mcp_servers[server_name] = {
+                    "command": cmd_parts[0],
+                    "args": cmd_parts[1:] if len(cmd_parts) > 1 else []
+                }
+
+        elif transport in ["http", "sse"] and port:
+            # For HTTP/SSE servers, use the standard MCP remote server format
+            # FastMCP can connect directly to the running MCP server
+            base_url = f"http://localhost:{port}"
+
+            mcp_servers[server_name] = {
+                "url": base_url,
+                "transport": transport
+            }
+
+    return {"mcpServers": mcp_servers}

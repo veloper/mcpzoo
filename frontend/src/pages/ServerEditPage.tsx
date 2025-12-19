@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ServerForm } from '../components/ServerForm'
 import { apiClient } from '../api/client'
-import { Container, Spinner, Alert } from 'react-bootstrap'
+import { Loader2 } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 export function ServerEditPage() {
   const { id } = useParams<{ id: string }>()
@@ -40,25 +41,31 @@ export function ServerEditPage() {
 
   if (loading) {
     return (
-      <Container className="text-center py-5">
-        <Spinner animation="border" />
-      </Container>
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     )
   }
 
   if (error) {
     return (
-      <Container>
-        <Alert variant="danger">{error}</Alert>
-      </Container>
+      <div className="container py-8">
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
     )
   }
 
   if (!serverData) {
     return (
-      <Container>
-        <Alert variant="warning">Server not found</Alert>
-      </Container>
+      <div className="container py-8">
+        <Alert>
+          <AlertTitle>Not Found</AlertTitle>
+          <AlertDescription>Server not found</AlertDescription>
+        </Alert>
+      </div>
     )
   }
 

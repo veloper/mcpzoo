@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mcpzoo-dev
+    restart: always
     ports:
       - "8001:8001"
       - "8100-8199:8100-8199"
@@ -16,7 +17,6 @@ services:
       - ./docker/Procfile:/Procfile
       - ./backend:/app/backend
       - ./data:/app/data
-    restart: unless-stopped
     networks:
       - mcpzoo-net
 

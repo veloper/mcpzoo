@@ -2,9 +2,11 @@ import json, os, signal
 
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from textwrap import dedent
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_serializer
 
 
 class ProcessState(str, Enum):
@@ -242,26 +244,6 @@ class SupervisorConf(BaseModel):
     numprocs: int = 1
     process_name: str = "%(program_name)s"
 
-    def to_supervisord_program_section(self) -> str:
-        """Generate [program:*] section."""
-        lines = [f"[program:{self.name}]"]
-        lines.append(f"command={self.command}")
-        if self.directory:
-            lines.append(f"directory={self.directory}")
-        if self.user:
-            lines.append(f"user={self.user}")
-        lines.append(f"autostart={'true' if self.autostart else 'false'}")
-        lines.append(f"autorestart={self.autorestart}")
-        lines.append(f"priority={self.priority}")
-        if self.stdout_logfile:
-            lines.append(f"stdout_logfile={self.stdout_logfile}")
-            lines.append(f"stdout_logfile_maxbytes={self.stdout_logfile_maxbytes}")
-            lines.append(f"stdout_logfile_backups={self.stdout_logfile_backups}")
-        if self.stderr_logfile:
-            lines.append(f"stderr_logfile={self.stderr_logfile}")
-        if self.environment:
-            lines.append(f"environment={','.join([f'{k}={v}' for k, v in self.environment.items()])}")
-        return "\n".join(lines)
 
 
 class Program(BaseModel):
@@ -316,25 +298,32 @@ class Program(BaseModel):
         """Alias to config.priority."""
         return self.config.priority
 
+class LogLevel(str, Enum):
+    """Log levels."""
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
 
 class MCPServerConfig(BaseModel):
     """MCP server configuration model."""
     
-    id: str
-    name: str
-    transport: MCPServerConfigTransport
-    url: Optional[str] = None
-    command: Optional[str] = None
-    arguments: List[str] = []
-    port: int
-    supervisor_conf: SupervisorConf
-    tools: List[MiseTool] = []
-    task_install: Optional[str] = None
-    task_uninstall: Optional[str] = None
-    task_run: Optional[str] = None
-    envs: Dict[str, str] = {}
-    created_at: datetime
-    updated_at: datetime
+    id:               str                      = Field(description="Unique server identifier")
+    name:             str                      = Field(description="Server name")
+    transport:        MCPServerConfigTransport = Field(description="Transport type for MCP server")
+    url:              str | None               = Field(default=None, description="URL for HTTP/SSE transport")
+    command:          str | None               = Field(default=None, description="Command to run the server (for stdio transport)")
+    arguments:        list[str]                = Field(default_factory=list, description="Arguments for the command")
+    port:             int                      = Field(description="Port number for the server")
+    supervisor_conf:  SupervisorConf           = Field(description="Supervisor configuration")
+    tools:            List[MiseTool]           = Field(default_factory=list, description="List of required tools/languages")
+    task_install:     str | None               = Field(default=None, description="Install task command")
+    task_uninstall:   str | None               = Field(default=None, description="Uninstall task command")
+    envs:             Dict[str, str]           = Field(default_factory=dict, description="Environment variables")
+    log_level:        LogLevel                 = Field(default=LogLevel.INFO, description="Log level")
+    created_at:       datetime                 = Field(description="Creation timestamp")
+    updated_at:       datetime                 = Field(description="Last update timestamp")
 
     def to_mcp_server_json(self) -> str:
         """Generate MCP server config JSON."""
@@ -371,3 +360,236 @@ class TokenData(BaseModel):
     """JWT token data."""
     sub: Optional[str] = None
     exp: Optional[int] = None
+    
+    
+
+class McpServersJsonFile(BaseModel):
+    """MCP servers configuration file model."""
+
+    mcp_servers_configs: List[MCPServerConfig]
+
+    def servers(self) -> Dict[str, Dict[str, Any]]:
+        """Generate mcpServers dict with all configs."""
+        servers_dict = {}
+        for config in self.mcp_servers_configs:
+            servers_dict[config.name] = {}
+            # Env
+            if config.envs:
+                servers_dict[config.name]["env"] = {k: v for k, v in config.envs.items()}
+                
+            # Transport-specific config
+            if config.transport == MCPServerConfigTransport.STDIO:
+                servers_dict[config.name] = {
+                    "type": config.transport.value,
+                    "command": config.command,
+                    "args": config.arguments
+                }
+            else:
+                servers_dict[config.name] = {
+                    "type": config.transport.value,
+                    "url": config.url
+                }
+                
+        return servers_dict
+            
+    @model_serializer()
+    def serialize(self) -> Dict[str, Any]:
+        """Serialize to JSON string."""
+        return { "mcpServers": self.servers() }
+    
+    def __str__(self) -> str:
+        """String representation as JSON."""
+        return json.dumps(self.serialize(), indent=4)
+
+
+class FastMcpServerProxyServerFile(BaseModel):
+    """FastMCP server that acts as a proxy to MCP server defined in mcpServers.json."""
+    
+    mcp_server_config: MCPServerConfig
+    mcp_server_json_file_path: Path
+    
+    def __str__(self):
+        return dedent(f"""
+            \"\"\"MCP Server Proxy - Generated by mcpzoo\"\"\"
+            from fastmcp import FastMCP
+            import json
+            from pathlib import Path
+            
+            # Load MCP server configuration from mcpServers.json
+            config_file = Path("{self.mcp_server_json_file_path.resolve().as_posix()}")
+            config = json.loads(config_file.read_text())
+            
+            # Create proxy server from config 
+            mcp = FastMCP.as_proxy(config, name={self.mcp_server_config.name}
+            
+            # Note:
+            # Server name must be `mcp` to allow `fastmcp run server.py` to recognize it.
+        """).strip()
+
+class MiseTomlFile(BaseModel):
+    """mise.toml configuration file for MCP server."""
+    
+    mcp_server_config: MCPServerConfig
+    
+    @property
+    def envs(self) -> Dict[str, str]:
+        """Get environment variables for mise.toml."""
+        return self.mcp_server_config.envs
+    
+    @property
+    def tools(self) -> List[MiseTool]:
+        """Get tools for mise.toml."""
+        return self.mcp_server_config.tools
+    
+    @property
+    def tasks(self) -> Dict[str, str]:
+        """Get tasks for mise.toml."""
+        tasks = {}
+        if self.mcp_server_config.task_install:
+            tasks["install"] = self.mcp_server_config.task_install
+        if self.mcp_server_config.task_uninstall:
+            tasks["uninstall"] = self.mcp_server_config.task_uninstall
+        return tasks
+    
+    def __str__(self) -> str:
+        file = []
+        
+        if self.envs:
+            file += ""
+            file += "[env]"
+            for k, v in self.envs.items():
+                file += f'{k} = "{v}"'
+                
+        if self.tools:
+            file += ""
+            file += "[tools]"
+            for tool in self.tools:
+                if tool.version:
+                    file += f'{tool.name} = "{tool.version}"'
+                else:
+                    file += f'{tool.name} = "*"'
+                    
+        if self.tasks:
+            file += ""
+            file += "[tasks]"
+            for task_name, command in self.tasks.items():
+                file += f'{task_name} = "{command}"'
+        
+        if file and file[0] == "":
+            file = file[1:]  # Remove leading empty line
+        
+        return "\n".join(file)
+
+class SupervisordConfFile(BaseModel):
+    """Supervisord configuration file for MCP server."""
+    
+    mcp_server_config: MCPServerConfig
+    
+    
+    @property
+    def supervisor_conf(self) -> SupervisorConf:
+        return self.mcp_server_config.supervisor_conf
+
+    def __str__(self) -> str:
+        file = []
+        
+        file.append(f"[program:{self.supervisor_conf.name}]")
+        file.append(f"command={self.supervisor_conf.command}")
+        file.append(f"group={self.supervisor_conf.group}")
+        file.append(f"process_name={self.supervisor_conf.process_name}")
+        file.append(f"numprocs={self.supervisor_conf.numprocs}")
+        file.append(f"priority={self.supervisor_conf.priority}")
+        file.append(f"autostart={'true' if self.supervisor_conf.autostart else 'false'}")
+        file.append(f"autorestart={self.supervisor_conf.autorestart}")
+        file.append(f"startsecs={self.supervisor_conf.startsecs}")
+        file.append(f"startretries={self.supervisor_conf.startretries}")
+        file.append(f"stopsignal={self.supervisor_conf.stopsignal}")
+        file.append(f"stopwaitsecs={self.supervisor_conf.stopwaitsecs}")
+        file.append(f"umask={self.supervisor_conf.umask}")
+        file.append(f"user={self.supervisor_conf.user}")
+        file.append(f"redirect_stderr={'true' if self.supervisor_conf.redirect_stderr else 'false'}")
+        
+        if self.supervisor_conf.directory:
+            file.append(f"directory={self.supervisor_conf.directory}")
+        
+        if self.supervisor_conf.stdout_logfile:
+            file.append(f"stdout_logfile={self.supervisor_conf.stdout_logfile}")
+            file.append(f"stdout_logfile_maxbytes={self.supervisor_conf.stdout_logfile_maxbytes}")
+            file.append(f"stdout_logfile_backups={self.supervisor_conf.stdout_logfile_backups}")
+        
+        if self.supervisor_conf.stderr_logfile:
+            file.append(f"stderr_logfile={self.supervisor_conf.stderr_logfile}")
+            file.append(f"stderr_logfile_maxbytes={self.supervisor_conf.stderr_logfile_maxbytes}")
+            file.append(f"stderr_logfile_backups={self.supervisor_conf.stderr_logfile_backups}")
+        
+        if self.supervisor_conf.environment:
+            envs = ",".join([f'{k}="{v}"' for k, v in self.supervisor_conf.environment.items()])
+            file.append(f"environment={envs}")
+        
+        return "\n".join(file)
+
+
+
+class McpServerDirectory(BaseModel):
+    """MCP server directory manager - creates and syncs server directories and files.
+    
+    - /app/servers/{server_id}
+        - mcpServers.json
+        - server.py
+        - supervisord.conf
+        - mise.toml
+    
+    
+    """
+
+    server_config: MCPServerConfig
+    base_path: str = "/app/servers"
+
+    
+    def get_run_command(self) -> str:
+        """Get the command to run the MCP server."""
+        return " ".join([
+            "mise", 
+            "run", 
+            "fastmcp", 
+            "run", 
+            "server.py", 
+            "--host", "127.0.0.1", 
+            "--no-banner", 
+            "--transport", "http", 
+            "--port", str(self.server_config.port), 
+            "--log-level", str(self.server_config.log_level.value)
+        ])
+    
+    
+            
+
+
+    @property
+    def server_directory(self) -> str:
+        """Get the server directory path."""
+        return os.path.join(self.base_path, self.server_config.name)
+
+    def ensure_directory_exists(self) -> None:
+        """Create the server directory if it doesn't exist."""
+        os.makedirs(self.server_directory, exist_ok=True)
+
+    @property
+    def mcp_server_json_path(self) -> str:
+        """Get the path to the mcpServers.json file."""
+        return os.path.join(self.server_directory, "mcpServers.json")
+    
+    @property
+    def fastmcp_server_proxy_path(self) -> str:
+        """Get the path to the FastMCP server proxy file."""
+        return os.path.join(self.server_directory, "server.py")
+    
+    @property
+    def supervisord_conf_path(self) -> str:
+        """Get the path to the supervisord configuration file."""
+        return os.path.join(self.server_directory, "supervisord.conf")
+    
+    @property
+    def mise_toml_path(self) -> str:
+        """Get the path to the mise.toml file."""
+        return os.path.join(self.server_directory, "mise.toml")

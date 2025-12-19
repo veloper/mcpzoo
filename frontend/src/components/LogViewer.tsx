@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react'
-import { Modal, Button, Form, Spinner, Alert } from 'react-bootstrap'
 import { apiClient } from '../api/client'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Loader2 } from 'lucide-react'
 
 interface LogViewerProps {
   serverId: string
@@ -33,31 +48,43 @@ export function LogViewer({ serverId, onClose }: LogViewerProps) {
   }, [serverId, logType])
 
   return (
-    <Modal show onHide={onClose} size="lg">
-      <Modal.Header closeButton>
-        <Modal.Title>Logs: Server {serverId}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Form.Select value={logType} onChange={(e) => setLogType(e.target.value as any)} className="mb-3">
-          <option value="stdout">stdout</option>
-          <option value="stderr">stderr</option>
-        </Form.Select>
-        {loading && (
-          <div className="text-center">
-            <Spinner animation="border" />
-          </div>
-        )}
-        {error && <Alert variant="danger">{error}</Alert>}
-        {!loading && !error && (
-          <pre style={{ maxHeight: '60vh', overflow: 'auto', backgroundColor: '#f5f5f5', padding: '1rem', borderRadius: '4px' }}>
-            {logs || '(no logs yet)'}
-          </pre>
-        )}
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={onClose}>Close</Button>
-      </Modal.Footer>
-    </Modal>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Logs: Server {serverId}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Select value={logType} onValueChange={(val: any) => setLogType(val)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select log type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="stdout">stdout</SelectItem>
+              <SelectItem value="stderr">stderr</SelectItem>
+            </SelectContent>
+          </Select>
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          )}
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {!loading && !error && (
+            <pre className="max-h-[60vh] overflow-auto bg-muted p-4 rounded-md text-sm">
+              {logs || '(no logs yet)'}
+            </pre>
+          )}
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

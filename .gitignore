@@ -5,7 +5,9 @@
 # Python
 backend/.venv/
 backend/__pycache__/
+__pycache__/
 backend/*.pyc
+*.pyc
 backend/dist/
 backend/build/
 backend/*.egg-info/

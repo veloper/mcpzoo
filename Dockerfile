@@ -33,7 +33,13 @@ WORKDIR /app
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
-RUN parallel ::: "cd /app/backend && pip install uv && uv sync --frozen" "cd /app/frontend && npm install && npm run build"
+# Install uv globally
+RUN pip install uv
+
+# RUN parallel ::: "cd /app/backend && uv sync --frozen" "cd /app/frontend && npm install && npm run build"
+
+# Install fastmcp globally
+RUN pip install fastmcp
 
 COPY docker/ /
 RUN chmod +x /entrypoint.sh
