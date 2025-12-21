@@ -28,7 +28,6 @@ interface BasicTabProps {
   url: string
   args: string[]
   port: number | null
-  logLevel: string
   envVars: Record<string, string>
   envKey: string
   envValue: string
@@ -37,7 +36,6 @@ interface BasicTabProps {
   onCommandChange: (value: string) => void
   onUrlChange: (value: string) => void
   onArgsChange: (args: string[]) => void
-  onLogLevelChange: (value: string) => void
   onEnvKeyChange: (value: string) => void
   onEnvValueChange: (value: string) => void
   onAddEnv: () => void
@@ -52,7 +50,6 @@ export function BasicTab({
   url,
   args,
   port,
-  logLevel,
   envVars,
   envKey,
   envValue,
@@ -61,7 +58,6 @@ export function BasicTab({
   onCommandChange,
   onUrlChange,
   onArgsChange,
-  onLogLevelChange,
   onEnvKeyChange,
   onEnvValueChange,
   onAddEnv,
@@ -180,21 +176,7 @@ export function BasicTab({
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="loglevel">Log Level</Label>
-              <Select value={logLevel} onValueChange={onLogLevelChange}>
-                <SelectTrigger id="loglevel">
-                  <SelectValue placeholder="Select log level" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DEBUG">DEBUG</SelectItem>
-                  <SelectItem value="INFO">INFO</SelectItem>
-                  <SelectItem value="WARNING">WARNING</SelectItem>
-                  <SelectItem value="ERROR">ERROR</SelectItem>
-                  <SelectItem value="CRITICAL">CRITICAL</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
 
             <div className="space-y-2">
               <Label>Environment Variables</Label>

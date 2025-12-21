@@ -1,11 +1,13 @@
-import uuid
+import json, uuid
 
 from datetime import datetime
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
-from src.backend.models import MCPServerConfig
+from src.backend.models import (FastMcpServerProxyServerFile, MCPServerConfig, McpServerDirectory, McpServersJsonFile,
+                                MiseTomlFile, SupervisordConfFile)
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisord import SupervisordService, get_supervisord_service
@@ -41,33 +43,109 @@ async def sync_processes(
 ):
     """
     CRITICAL: Write all server configs to disk and restart supervisord MCP group.
-    
+
     Changes to server configs don't take effect until this is called.
     This endpoint:
-    1. Writes config files to /app/servers/
-    2. Generates supervisord program files
-    3. Restarts supervisord group:mcp_servers
-    4. Installs MISE dependencies (if needed)
+    1. Loads McpDirectory objects for all servers (creates/updates directory structures and files)
+    2. Writes config files to /app/servers/
+    3. Generates supervisord program files
+    4. Restarts supervisord group:mcp_servers
+    5. Installs MISE dependencies (if needed)
     """
     try:
         async with db_service as db:
             servers_table = db.table('servers')
             servers = servers_table.all()
-        
-        # Reread supervisord config and update
-        await supervisor_service.reread_config()
-        await supervisor_service.update()
-        
+
+        # Load McpDirectory objects for each server (this creates/updates directory structures and files)
+        directories = []
+        synced_servers = []
+        for server_data in servers:
+            try:
+                # Convert dict to MCPServerConfig
+                server_config = MCPServerConfig(**server_data)
+                # Create McpDirectory object (this generates all files and directory structure)
+                directory = McpServerDirectory.from_server_config(server_config)
+                directories.append(directory)
+
+                # Update synced_at timestamp
+                server_data["synced_at"] = datetime.now().isoformat()
+                synced_servers.append(server_data)
+
+                logger.info(f"Loaded McpDirectory for server: {server_config.name} (ID: {server_config.id})")
+            except Exception as e:
+                logger.error(f"Failed to load McpDirectory for server {server_data.get('name', 'unknown')}: {str(e)}")
+                raise
+
+        # Update synced_at timestamps in database
+        for server_data in synced_servers:
+            Server = Query()
+            servers_table.update({"synced_at": server_data["synced_at"]}, Server.id == server_data["id"])
+
+        # for each directory, clear it, then write all files
+        for directory in directories:
+            directory.sync(logger=logger)
+
+        logger.info(f"Successfully loaded {len(directories)} McpDirectory objects")
+
+        # Tell supervisord to reread and update configuration
+        try:
+            reread_result = supervisor_service.reread_config()
+            logger.info(f"Supervisord reread result: added={reread_result.added_group_names}, changed={reread_result.changed_group_names}, removed={reread_result.removed_group_names}")
+
+            if reread_result.added_group_names or reread_result.changed_group_names or reread_result.removed_group_names:
+                logger.info("Configuration changes detected, supervisord applied them")
+            else:
+                logger.info("No configuration changes detected")
+
+        except Exception as e:
+            logger.error(f"Failed to reread supervisord config: {str(e)}")
+            # Don't fail the entire sync if reread fails
+            pass
+
         return {
             "status": "success",
-            "message": "MCP servers synced and supervisord restarted",
-            "details": {"servers_synced": len(servers)},
+            "message": "MCP server directories and files synced, supervisord config updated",
+            "details": {
+                "servers_synced": len(servers),
+                "directories_loaded": len(directories)
+            },
         }
     except Exception as e:
+        logger.error(f"Sync failed: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Sync failed: {str(e)}",
         )
+
+@router.get("/{server_id}", response_model=dict)
+async def get_server(
+    server_id: str,
+    username: str = Depends(verify_token),
+    db_service: DatabaseService = Depends(get_database_service),
+):
+    """Get specific server."""
+    logger.info(f"get_server called by user: {username} for server_id: {server_id}")
+    try:
+        async with db_service as db:
+            servers_table = db.table('servers')
+            Server = Query()
+            server = servers_table.get(Server.id == server_id)
+
+        if not server:
+            logger.warning(f"Server not found: {server_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found",
+            )
+
+        logger.info(f"Successfully retrieved server: {server_id}")
+        return server
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_server for {server_id}: {str(e)}")
+        raise
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -77,11 +155,13 @@ async def create_server(
     db_service: DatabaseService = Depends(get_database_service),
 ):
     """Create a new MCP server."""
-    server_dict = server.copy() if isinstance(server, dict) else server.model_dump()
+    # Generate ID before validation since MCPServerConfig requires it
     server_id = str(uuid.uuid4())
-    server_dict["id"] = server_id
-    server_dict["created_at"] = datetime.now().isoformat()
-    server_dict["updated_at"] = datetime.now().isoformat()
+    server["id"] = server_id
+
+    # Validate incoming data using MCPServerConfig model
+    server_config = MCPServerConfig.model_validate(server)
+    server_dict = server_config.model_dump()
 
     # Always assign port for all transports (ignore any port in request)
     transport = server_dict.get("transport")
@@ -115,35 +195,6 @@ async def create_server(
     return {"id": server_id, **server_dict}
 
 
-@router.get("/{server_id}", response_model=dict)
-async def get_server(
-    server_id: str,
-    username: str = Depends(verify_token),
-    db_service: DatabaseService = Depends(get_database_service),
-):
-    """Get specific server."""
-    logger.info(f"get_server called by user: {username} for server_id: {server_id}")
-    try:
-        async with db_service as db:
-            servers_table = db.table('servers')
-            Server = Query()
-            server = servers_table.get(Server.id == server_id)
-
-        if not server:
-            logger.warning(f"Server not found: {server_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Server not found",
-            )
-
-        logger.info(f"Successfully retrieved server: {server_id}")
-        return server
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_server for {server_id}: {str(e)}")
-        raise
-
 
 @router.put("/{server_id}")
 async def update_server(
@@ -163,7 +214,10 @@ async def update_server(
                 detail="Server not found",
             )
 
-        server_dict = server.copy() if isinstance(server, dict) else server.model_dump()
+        # Validate incoming data using MCPServerConfig model
+        server_config = MCPServerConfig.model_validate(server)
+        server_dict = server_config.model_dump()
+        logger.info(f"Validated server config: {server_dict}")
         server_dict["id"] = server_id
         server_dict["updated_at"] = datetime.now().isoformat()
 
@@ -235,151 +289,6 @@ async def get_server_logs(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
 
-
-@router.post("/{server_id}/start")
-async def start_server(
-    server_id: str,
-    username: str = Depends(verify_token),
-    db_service: DatabaseService = Depends(get_database_service),
-    srv: SupervisordService = Depends(get_supervisord_service),
-):
-    """Start MCP server process."""
-    async with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        server = servers_table.get(Server.id == server_id)
-    if not server:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Server not found",
-        )
-    
-    process_name = f"mcp_{server['name']}"
-    try:
-        if not srv.start_process(process_name):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to start server {server['name']}",
-            )
-        return {"status": "started", "server": server['name']}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error starting server: {str(e)}"
-        )
-
-
-@router.post("/{server_id}/stop")
-async def stop_server(
-    server_id: str,
-    username: str = Depends(verify_token),
-    db_service: DatabaseService = Depends(get_database_service),
-    srv: SupervisordService = Depends(get_supervisord_service),
-):
-    """Stop MCP server process."""
-    async with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        server = servers_table.get(Server.id == server_id)
-    if not server:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Server not found",
-        )
-    
-    process_name = f"mcp_{server['name']}"
-    try:
-        if not srv.stop_process(process_name):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to stop server {server['name']}",
-            )
-        return {"status": "stopped", "server": server['name']}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error stopping server: {str(e)}"
-        )
-
-
-@router.post("/{server_id}/restart")
-async def restart_server(
-    server_id: str,
-    username: str = Depends(verify_token),
-    db_service: DatabaseService = Depends(get_database_service),
-    srv: SupervisordService = Depends(get_supervisord_service),
-):
-    """Restart MCP server process."""
-    async with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        server = servers_table.get(Server.id == server_id)
-    if not server:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Server not found",
-        )
-    
-    process_name = f"mcp_{server['name']}"
-    try:
-        if not (srv.stop_process(process_name) and srv.start_process(process_name)):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to restart server {server['name']}",
-            )
-        return {"status": "restarted", "server": server['name']}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error restarting server: {str(e)}"
-        )
-
-
-@router.get("/{server_id}/status")
-async def get_server_status(
-    server_id: str,
-    username: str = Depends(verify_token),
-    db_service: DatabaseService = Depends(get_database_service),
-    srv: SupervisordService = Depends(get_supervisord_service),
-):
-    """Get current status of MCP server process."""
-    async with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        server = servers_table.get(Server.id == server_id)
-    if not server:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Server not found",
-        )
-    
-    process_name = f"mcp_{server['name']}"
-    try:
-        proc = srv.get_process_status(process_name)
-        if not proc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Process {process_name} not found",
-            )
-        return {
-            "server": server['name'],
-            "process": process_name,
-            "status": proc.state,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting server status: {str(e)}"
-        )
-
 @router.delete("/{server_id}", status_code=204)
 async def delete_server(
     server_id: str,
@@ -445,3 +354,141 @@ async def get_mcp_config(
             }
 
     return {"mcpServers": mcp_servers}
+
+@router.post("/parse-config")
+async def parse_server_config(
+    data: dict,
+    username: str = Depends(verify_token),
+):
+    """Parse and validate JSON configuration for MCP server."""
+    try:
+        json_str = data.get("json", "")
+        if not json_str:
+            raise HTTPException(status_code=400, detail="JSON configuration is required")
+
+        # Parse JSON
+        try:
+            config_data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+
+        # Check if it's McpServersJsonFile format (has mcpServers key)
+        if "mcpServers" in config_data and isinstance(config_data["mcpServers"], dict):
+            # Convert from McpServersJsonFile format to MCPServerConfig
+            mcp_servers = config_data["mcpServers"]
+            if len(mcp_servers) != 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="McpServersJsonFile must contain exactly one server configuration"
+                )
+
+            server_name, server_config = next(iter(mcp_servers.items()))
+
+            # Convert to MCPServerConfig format
+            mcpserver_config = {
+                "id": str(uuid.uuid4()),  # Generate unique ID
+                "name": server_name,
+                "transport": server_config.get("type", "stdio"),
+                "command": server_config.get("command"),
+                "arguments": server_config.get("args", []),
+                "url": server_config.get("url"),
+                "envs": server_config.get("env", {}),
+                # Set defaults for required fields
+                "supervisor_conf": {
+                    "name": server_name,
+                    "command": "",  # Will be set by frontend
+                    "group": "mcp_servers",
+                    "autostart": True,
+                    "autorestart": "unexpected",
+                    "startsecs": 1,
+                    "startretries": 3,
+                    "priority": 999,
+                    "stopsignal": "TERM",
+                    "stopwaitsecs": 10,
+                    "redirect_stderr": False,
+                    "numprocs": 1
+                },
+                "tools": [],
+                "log_level": "INFO"
+            }
+
+            # Validate using MCPServerConfig model
+            server_config_obj = MCPServerConfig.model_validate(mcpserver_config)
+            return server_config_obj.model_dump()
+
+        else:
+            # Assume it's already MCPServerConfig format
+            # Validate using MCPServerConfig model
+            server_config = MCPServerConfig.model_validate(config_data)
+            return server_config.model_dump()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse configuration: {str(e)}")
+
+@router.post("/{server_id}/files", response_model=dict)
+async def get_server_files(
+    server_id: str,
+    server_config_data: dict | None = None,
+    username: str = Depends(verify_token),
+    db_service: DatabaseService = Depends(get_database_service),
+):
+    """Get generated files for a server configuration."""
+    logger.info(f"get_server_files called by user: {username} for server_id: {server_id}")
+    try:
+        # Use provided server config data if available, otherwise fetch from database
+        if server_config_data:
+            logger.info(f"Using provided server config data for server: {server_id}")
+            config_data = server_config_data
+        else:
+            logger.info(f"Fetching server config from database for server: {server_id}")
+            async with db_service as db:
+                servers_table = db.table('servers')
+                Server = Query()
+                server_data = servers_table.get(Server.id == server_id)
+
+            if not server_data:
+                logger.warning(f"Server not found: {server_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Server not found",
+                )
+            config_data = server_data
+
+        
+
+
+
+        # Convert dict to MCPServerConfig
+        server_config = MCPServerConfig(**config_data)
+
+        # Directory 
+        directory = McpServerDirectory.from_server_config(server_config)
+
+
+        # Create file generators
+        mcp_servers_json = directory.mcp_servers_json_file
+        fastmcp_proxy = directory.fastmcp_server_proxy_server_file
+        mise_toml = directory.mise_toml_file
+        supervisord_conf = directory.supervisord_conf_file
+
+        # Generate file contents
+        files = {
+            "mcpServers.json": str(mcp_servers_json),
+            "server.py": str(fastmcp_proxy),
+            "mise.toml": str(mise_toml),
+            "supervisord.conf": str(supervisord_conf),
+        }
+
+        logger.info(f"Successfully generated files for server: {server_id}")
+        return {"files": files}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in get_server_files for {server_id}: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating server files: {str(e)}"
+        ) from e

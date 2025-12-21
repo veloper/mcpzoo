@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-from src.backend.settings import settings
 from src.backend.models import TokenData
+from src.backend.settings import get_settings
+
+
+settings = get_settings()
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

@@ -1,6 +1,8 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.backend.environment import get_env
 
 
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
     # MCP
     mcp_port_min: int = 8100
     mcp_port_max: int = 8199
+    mcp_server_path: str = "/app/servers"
     
     # Logging
     log_level: str = "INFO"
@@ -63,4 +66,9 @@ class Settings(BaseSettings):
             raise ValueError("APP_USERNAME and APP_PASSWORD are required")
 
 
-settings = Settings()
+
+# Instantiate settings singleton
+@lru_cache
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../api/client'
 
 export interface Server {
@@ -63,6 +63,16 @@ export function useServers() {
     }
   }
 
+  const fetchServerFiles = useCallback(async (serverId: string, serverConfig?: any) => {
+    try {
+      const response = await apiClient.getServerFiles(serverId, serverConfig)
+      return response
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch server files')
+      throw err
+    }
+  }, [])
+
   return {
     servers,
     loading,
@@ -71,5 +81,6 @@ export function useServers() {
     deleteServer,
     startServer,
     stopServer,
+    fetchServerFiles,
   }
 }

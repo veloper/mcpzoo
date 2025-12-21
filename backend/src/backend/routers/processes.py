@@ -1,9 +1,13 @@
-from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
+from src.backend.models import MCPServerConfig, Program
+from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.supervisord import get_supervisord_service
-from src.backend.models import Program
 from src.backend.utils.shell import run_command
+from tinydb import Query
+
 
 router = APIRouter(prefix="/api/processes", tags=["processes"])
 
@@ -89,24 +93,87 @@ async def kill_process(
 @router.get("/{name}/logs")
 async def get_process_logs(
     name: str,
-    type: str = "stdout",
     username: str = Depends(verify_token),
+    db_service: DatabaseService = Depends(get_database_service),
 ):
-    """Get process logs (stdout or stderr)."""
-    log_file = f"/var/log/supervisor/{name}_{type}.log"
-    
+    """Get process logs from actual log files as structured records."""
     try:
-        with open(log_file, 'r') as f:
-            lines = f.readlines()
-            content = ''.join(lines[-100:])
-        
+        # Extract server name from process name (remove 'mcp_' prefix if present)
+        server_name = name
+        if name.startswith('mcp_'):
+            server_name = name[4:]  # Remove 'mcp_' prefix
+
+        # Look up server config by name
+        async with db_service as db:
+            servers_table = db.table('servers')
+            Server = Query()
+            server_data = servers_table.get(Server.name == server_name)
+
+        if not server_data:
+            raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")
+
+        # Convert to MCPServerConfig to access supervisor config
+        server_config = MCPServerConfig(**server_data)
+        supervisor_conf = server_config.supervisor_conf
+
+        # Get log file paths from supervisor config
+        stdout_logfile = supervisor_conf.stdout_logfile
+        stderr_logfile = supervisor_conf.stderr_logfile
+
+        if not stdout_logfile and not stderr_logfile:
+            raise HTTPException(status_code=404, detail="No log files configured for this server")
+
+        logs = []
+
+        # Read stdout logs
+        if stdout_logfile:
+            try:
+                with open(stdout_logfile, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:  # Skip empty lines
+                            logs.append({
+                                "type": "STDOUT",
+                                "message": line
+                            })
+            except FileNotFoundError:
+                # Log file doesn't exist yet, skip
+                pass
+            except Exception as e:
+                # Log read error, but continue with other logs
+                pass
+
+        # Read stderr logs
+        if stderr_logfile:
+            try:
+                with open(stderr_logfile, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:  # Skip empty lines
+                            logs.append({
+                                "type": "STDERR",
+                                "message": line
+                            })
+            except FileNotFoundError:
+                # Log file doesn't exist yet, skip
+                pass
+            except Exception as e:
+                # Log read error, but continue
+                pass
+
+        # Return last 1000 log entries (configurable limit)
+        recent_logs = logs[-1000:] if len(logs) > 1000 else logs
+
         return {
             "process": name,
-            "type": type,
-            "content": content,
+            "server_name": server_name,
+            "logs": recent_logs,
+            "total_entries": len(logs),
+            "returned_entries": len(recent_logs)
         }
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Log file not found for {type}")
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading logs: {str(e)}")
 
@@ -132,4 +199,29 @@ async def process_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting program status: {str(e)}"
+        )
+
+@router.put("/reread_config")
+async def reread_config(
+    username: str = Depends(verify_token),
+    srv = Depends(get_supervisord_service),
+):
+    """Reread supervisord configuration and apply changes."""
+    try:
+        # reread_config() already handles both reading and updating
+        result = srv.reread_config()
+
+        return {
+            "status": "success",
+            "message": "Configuration reread and updated successfully",
+            "details": {
+                "added_groups": result.added_group_names,
+                "changed_groups": result.changed_group_names,
+                "removed_groups": result.removed_group_names
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error rereading configuration: {str(e)}"
         )

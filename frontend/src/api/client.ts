@@ -88,8 +88,18 @@ class APIClient {
     return response.data
   }
 
+  async rereadConfig() {
+    const response = await this.client.put('/processes/reread_config')
+    return response.data
+  }
+
   async getServerLogs(serverId: string, type: 'stdout' | 'stderr' = 'stdout') {
     const response = await this.client.get(`/servers/${serverId}/logs`, { params: { type } })
+    return response.data
+  }
+
+  async getServerFiles(serverId: string, serverConfig?: any) {
+    const response = await this.client.post(`/servers/${serverId}/files`, serverConfig || {})
     return response.data
   }
 
@@ -138,6 +148,11 @@ class APIClient {
 
   async stopProcess(name: string) {
     const response = await this.client.post(`/processes/${name}/stop`)
+    return response.data
+  }
+
+  async getProcessLogs(name: string) {
+    const response = await this.client.get(`/processes/${name}/logs`)
     return response.data
   }
 }

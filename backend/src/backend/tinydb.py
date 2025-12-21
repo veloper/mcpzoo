@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.backend.settings import settings
+from src.backend.settings import get_settings
 from tinydb import Query, TinyDB
 
+
+settings = get_settings()
 
 class Database:
     """TinyDB wrapper."""

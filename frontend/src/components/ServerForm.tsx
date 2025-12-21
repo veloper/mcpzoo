@@ -8,7 +8,11 @@ import { BasicTab } from './form/BasicTab'
 import { ProcessTab } from './form/ProcessTab'
 import { ToolsTab } from './form/ToolsTab'
 import { TasksTab } from './form/TasksTab'
+import { LoggingTab } from './form/LoggingTab'
+import { FilesTab } from './form/FilesTab'
 import { EnvironmentTab } from './form/EnvironmentTab'
+import { McpServerImport } from './McpServerImport'
+import { toast } from 'sonner'
 
 interface SupervisorConf {
   name: string
@@ -60,7 +64,7 @@ interface MCPServerConfig {
 }
 
 interface ServerFormProps {
-  onSuccess: () => void
+  onSuccess: (serverId?: string) => void
   onCancel: () => void
   editingId?: string | null
 }
@@ -82,6 +86,12 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [stopsignal, setStopsignal] = useState('TERM')
   const [stopwaitsecs, setStopwaitsecs] = useState(10)
   const [redirectStderr, setRedirectStderr] = useState(false)
+  const [stdoutLogfile, setStdoutLogfile] = useState('')
+  const [stdoutLogfileMaxbytes, setStdoutLogfileMaxbytes] = useState(50_000_000)
+  const [stdoutLogfileBackups, setStdoutLogfileBackups] = useState(10)
+  const [stderrLogfile, setStderrLogfile] = useState('')
+  const [stderrLogfileMaxbytes, setStderrLogfileMaxbytes] = useState(50_000_000)
+  const [stderrLogfileBackups, setStderrLogfileBackups] = useState(10)
   const [numprocs, setNumprocs] = useState(1)
   const [taskInstall, setTaskInstall] = useState('')
   const [taskUninstall, setTaskUninstall] = useState('')
@@ -100,9 +110,133 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [logLevel, setLogLevel] = useState('INFO')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [originalServer, setOriginalServer] = useState<any>(null)
+  const [initialFormHash, setInitialFormHash] = useState<string>('')
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
-  const nameRegex = /^[a-zA-Z0-9\-_]+$/
+  // Simple hash function for form state comparison
+  const hashFormState = () => {
+    const state = {
+      name: name.trim(),
+      transport,
+      command: transport === 'stdio' ? command.trim() : '',
+      url: transport !== 'stdio' ? url.trim() : '',
+      args,
+      autostart,
+      autorestart,
+      startsecs,
+      startretries,
+      priority,
+      stopsignal,
+      stopwaitsecs,
+      redirectStderr,
+      stdoutLogfile,
+      stdoutLogfileMaxbytes,
+      stdoutLogfileBackups,
+      stderrLogfile,
+      stderrLogfileMaxbytes,
+      stderrLogfileBackups,
+      numprocs,
+      taskInstall: taskInstall.trim(),
+      taskUninstall: taskUninstall.trim(),
+      envVars,
+      tools,
+      logLevel
+    }
+    return JSON.stringify(state)
+  }
+
+  const nameRegex = /^[a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9]$/
   const toolValidationTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const getCurrentServerConfig = () => {
+    // Compute log file paths based on server ID and redirect_stderr setting
+    const serverId = editingId || '{id}'
+    const logFileBase = `/var/log/supervisor/${serverId}`
+
+    let stdoutLogfilePath: string
+    let stderrLogfilePath: string
+
+    if (redirectStderr) {
+      // When stderr is redirected, both use the combined log file
+      stdoutLogfilePath = `${logFileBase}_combined.log`
+      stderrLogfilePath = `${logFileBase}_combined.log`
+    } else {
+      // Separate log files for stdout and stderr
+      stdoutLogfilePath = `${logFileBase}_out.log`
+      stderrLogfilePath = `${logFileBase}_err.log`
+    }
+
+    const supervisorConf = {
+      name,
+      group: 'mcp_servers',
+      command: transport === 'stdio' ? command : '',
+      directory: name ? `/app/servers/${name}` : undefined,
+      umask: '022',
+      user: 'root',
+      autostart,
+      autorestart,
+      startsecs: parseInt(startsecs.toString()),
+      startretries: parseInt(startretries.toString()),
+      priority: parseInt(priority.toString()),
+      stopsignal,
+      stopwaitsecs: parseInt(stopwaitsecs.toString()),
+      stdout_logfile: stdoutLogfilePath,
+      stdout_logfile_maxbytes: stdoutLogfileMaxbytes,
+      stdout_logfile_backups: stdoutLogfileBackups,
+      stderr_logfile: stderrLogfilePath,
+      stderr_logfile_maxbytes: stderrLogfileMaxbytes,
+      stderr_logfile_backups: stderrLogfileBackups,
+      redirect_stderr: redirectStderr,
+      environment: Object.keys(envVars).length > 0 ? envVars : {},
+      numprocs: parseInt(numprocs.toString()),
+    }
+
+    const config = {
+      id: editingId || undefined,
+      name: name.trim(),
+      transport: transport as 'stdio' | 'http' | 'sse',
+      // Port will be assigned by backend on save
+      command: transport === 'stdio' ? command.trim() : undefined,
+      url: transport !== 'stdio' ? url.trim() : undefined,
+      arguments: args.length > 0 ? args : undefined,
+      supervisor_conf: supervisorConf,
+      tools: tools && tools.length > 0 ? tools : [],
+      task_install: taskInstall.trim() || undefined,
+      task_uninstall: taskUninstall.trim() || undefined,
+      envs: Object.keys(envVars).length > 0 ? envVars : {},
+      log_level: logLevel,
+      created_at: editingId ? undefined : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+
+
+    // Remove undefined values to keep payload clean
+    Object.keys(config).forEach(k => {
+      if (config[k as keyof typeof config] === undefined) {
+        delete config[k as keyof typeof config]
+      }
+    })
+
+    return config
+  }
+
+  // Check if current form state differs from original server data
+  const hasChanges = React.useMemo(() => {
+    if (!editingId) {
+      // For new servers, always allow saving if there's a name
+      return name.trim().length > 0
+    }
+
+    // For editing servers, compare current hash with initial hash
+    if (!initialFormHash) {
+      return false // No changes if we haven't set the initial hash yet
+    }
+
+    const currentHash = hashFormState()
+    return currentHash !== initialFormHash
+  }, [editingId, initialFormHash, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, numprocs, taskInstall, taskUninstall, envVars, tools, logLevel])
 
   useEffect(() => {
     if (editingId) {
@@ -137,6 +271,12 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
             setStopsignal(server.supervisor_conf.stopsignal || 'TERM')
             setStopwaitsecs(server.supervisor_conf.stopwaitsecs || 10)
             setRedirectStderr(server.supervisor_conf.redirect_stderr ?? false)
+            setStdoutLogfile(server.supervisor_conf.stdout_logfile || '')
+            setStdoutLogfileMaxbytes(server.supervisor_conf.stdout_logfile_maxbytes || 50_000_000)
+            setStdoutLogfileBackups(server.supervisor_conf.stdout_logfile_backups || 10)
+            setStderrLogfile(server.supervisor_conf.stderr_logfile || '')
+            setStderrLogfileMaxbytes(server.supervisor_conf.stderr_logfile_maxbytes || 50_000_000)
+            setStderrLogfileBackups(server.supervisor_conf.stderr_logfile_backups || 10)
             setNumprocs(server.supervisor_conf.numprocs || 1)
             if (server.supervisor_conf.environment && typeof server.supervisor_conf.environment === 'object') {
               setEnvVars(server.supervisor_conf.environment)
@@ -163,6 +303,13 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
             setEnvVars(server.envs)
           }
 
+          // Load timestamps
+          console.log('Loading timestamps...')
+
+          // Load log level
+          console.log('Loading log level...')
+          setLogLevel(server.log_level || 'INFO')
+
           console.log('Server data loaded successfully')
         } catch (err: any) {
           console.error('Failed to load server - detailed error:', err)
@@ -172,13 +319,24 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
         }
       }
       loadServer()
+    } else {
+      // For new servers, set initial hash to empty (will be set when form changes)
+      setInitialFormHash('')
     }
   }, [editingId])
+
+  // Set initial hash after form state is loaded
+  useEffect(() => {
+    if (editingId && !initialFormHash && name) {
+      // Only set initial hash when we have loaded data and name is set
+      setInitialFormHash(hashFormState())
+    }
+  }, [editingId, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, numprocs, taskInstall, taskUninstall, envVars, tools, logLevel, initialFormHash])
 
   const handleNameChange = (value: string) => {
     setName(value)
     if (value && !nameRegex.test(value)) {
-      setNameError('Server name may only contain letters, numbers, hyphens, and underscores')
+      setNameError('Server name must start with a letter and contain only letters, numbers, hyphens, and underscores (cannot start or end with a dash or underscore)')
     } else {
       setNameError('')
     }
@@ -335,6 +493,73 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
     setEnvVars(newEnvs)
   }
 
+  const handleImport = (config: any) => {
+    try {
+      // Update form fields with imported config
+      setName(config.name || '')
+      setTransport(config.transport || 'stdio')
+      setCommand(config.command || '')
+      setUrl(config.url || '')
+      setArgs(Array.isArray(config.arguments) ? config.arguments : [])
+      setPort(config.port || null)
+
+      // Load supervisor config
+      if (config.supervisor_conf) {
+        setAutostart(config.supervisor_conf.autostart ?? true)
+        setAutorestart(config.supervisor_conf.autorestart || 'unexpected')
+        setStartsecs(config.supervisor_conf.startsecs || 1)
+        setStartretries(config.supervisor_conf.startretries || 3)
+        setPriority(config.supervisor_conf.priority || 999)
+        setStopsignal(config.supervisor_conf.stopsignal || 'TERM')
+        setStopwaitsecs(config.supervisor_conf.stopwaitsecs || 10)
+        setRedirectStderr(config.supervisor_conf.redirect_stderr ?? false)
+        setStdoutLogfile(config.supervisor_conf.stdout_logfile || '')
+        setStdoutLogfileMaxbytes(config.supervisor_conf.stdout_logfile_maxbytes || 50_000_000)
+        setStdoutLogfileBackups(config.supervisor_conf.stdout_logfile_backups || 10)
+        setStderrLogfile(config.supervisor_conf.stderr_logfile || '')
+        setStderrLogfileMaxbytes(config.supervisor_conf.stderr_logfile_maxbytes || 50_000_000)
+        setStderrLogfileBackups(config.supervisor_conf.stderr_logfile_backups || 10)
+        setNumprocs(config.supervisor_conf.numprocs || 1)
+        if (config.supervisor_conf.environment && typeof config.supervisor_conf.environment === 'object') {
+          setEnvVars(config.supervisor_conf.environment)
+        }
+      }
+
+      // Load tools
+      if (Array.isArray(config.tools)) {
+        setTools(config.tools.map((t: any) => ({
+          name: t.name || '',
+          version: t.version
+        })))
+      }
+
+      // Load tasks
+      setTaskInstall(config.task_install || '')
+      setTaskUninstall(config.task_uninstall || '')
+
+      // Load envs
+      if (config.envs && typeof config.envs === 'object') {
+        setEnvVars(config.envs)
+      }
+
+      // Load log level
+      setLogLevel(config.log_level || 'INFO')
+
+      // Clear any existing errors
+      setError('')
+      setNameError('')
+
+      // Show success message
+      toast.success('Configuration imported successfully')
+
+      // Reset initial hash to allow saving
+      setInitialFormHash('')
+    } catch (err: any) {
+      console.error('Failed to import configuration:', err)
+      setError('Failed to import configuration')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -343,66 +568,29 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
     try {
       // Validate required fields
       if (!name.trim()) throw new Error('Server name is required')
-      if (!nameRegex.test(name)) throw new Error('Server name may only contain letters, numbers, hyphens, and underscores')
+      if (!nameRegex.test(name)) throw new Error('Server name must start with a letter and contain only letters, numbers, hyphens, and underscores (cannot start or end with a dash or underscore)')
       if (transport === 'stdio' && !command.trim()) throw new Error('Command is required for stdio transport')
       if (transport !== 'stdio' && !url.trim()) throw new Error('URL is required for http/sse transport')
 
-      const supervisorConf = {
-        name,
-        group: 'mcp_servers',
-        command: transport === 'stdio' ? command : '',
-        directory: name ? `/app/servers/${name}` : undefined,
-        umask: '022',
-        user: 'root',
-        autostart,
-        autorestart,
-        startsecs: parseInt(startsecs.toString()),
-        startretries: parseInt(startretries.toString()),
-        priority: parseInt(priority.toString()),
-        stopsignal,
-        stopwaitsecs: parseInt(stopwaitsecs.toString()),
-        stdout_logfile: `/var/log/supervisor/mcp_${name}_stdout.log`,
-        stdout_logfile_maxbytes: 50_000_000,
-        stdout_logfile_backups: 10,
-        stderr_logfile: `/var/log/supervisor/mcp_${name}_stderr.log`,
-        stderr_logfile_maxbytes: 50_000_000,
-        stderr_logfile_backups: 10,
-        redirect_stderr: redirectStderr,
-        environment: Object.keys(envVars).length > 0 ? envVars : {},
-        numprocs: parseInt(numprocs.toString()),
-      }
+      // Use the unified config creation function
+      const config = getCurrentServerConfig()
 
-      const config = {
-        id: editingId || undefined,
-        name: name.trim(),
-        transport: transport as 'stdio' | 'http' | 'sse',
-        // Port will be assigned by backend on save
-        command: transport === 'stdio' ? command.trim() : undefined,
-        url: transport !== 'stdio' ? url.trim() : undefined,
-        arguments: args.length > 0 ? args : undefined,
-        supervisor_conf: supervisorConf,
-        tools: tools && tools.length > 0 ? tools : [],
-        task_install: taskInstall.trim() || undefined,
-        task_uninstall: taskUninstall.trim() || undefined,
-        envs: Object.keys(envVars).length > 0 ? envVars : {},
-        created_at: editingId ? undefined : new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      // Remove undefined values to keep payload clean
-      Object.keys(config).forEach(k => {
-        if (config[k as keyof typeof config] === undefined) {
-          delete config[k as keyof typeof config]
-        }
-      })
-
+      let savedServer
       if (editingId) {
-        await apiClient.updateServer(editingId, config)
+        savedServer = await apiClient.updateServer(editingId, config)
+        // Show success toast
+        toast.success("All changes saved")
+        // Update hashes to match current state, disabling the save button
+        setOriginalServer(getCurrentServerConfig())
+        setInitialFormHash(hashFormState())
       } else {
-        await apiClient.createServer(config)
+        savedServer = await apiClient.createServer(config)
+        // Show success toast
+        toast.success("Server created successfully")
+        // Redirect to edit page for the new server
+        onSuccess(savedServer.id)
+        return
       }
-
-      onSuccess()
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to save server')
     } finally {
@@ -413,13 +601,29 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   return (
     <div>
         <div className="max-w-7xl">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">
-            {editingId ? 'Edit Server' : 'Add New MCP Server'}
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Configure your Model Context Protocol server instance.
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {editingId ? 'Edit Server' : 'Add New MCP Server'}
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Configure your Model Context Protocol server instance.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="h-10 text-sm font-medium"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              <Download className="mr-2 h-5 w-5" />
+              Import
+            </Button>
+            <Button onClick={handleSubmit} disabled={loading || !hasChanges} className="h-10 text-sm font-medium">
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -433,11 +637,13 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
           <div className="flex gap-6">
             <div className="flex-1">
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-6">
                   <TabsTrigger value="basic">Basic</TabsTrigger>
                   <TabsTrigger value="process">Process</TabsTrigger>
+                  <TabsTrigger value="logging">Logging</TabsTrigger>
                   <TabsTrigger value="tools">Tools</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                  <TabsTrigger value="files">Files</TabsTrigger>
                 </TabsList>
 
             <TabsContent value="basic">
@@ -449,7 +655,6 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 url={url}
                 args={args}
                 port={port}
-                logLevel={logLevel}
                 envVars={envVars}
                 envKey={envKey}
                 envValue={envValue}
@@ -458,7 +663,6 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 onCommandChange={setCommand}
                 onUrlChange={setUrl}
                 onArgsChange={setArgs}
-                onLogLevelChange={setLogLevel}
                 onEnvKeyChange={setEnvKey}
                 onEnvValueChange={setEnvValue}
                 onAddEnv={handleAddEnv}
@@ -491,6 +695,24 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
               />
             </TabsContent>
 
+            <TabsContent value="logging">
+              <LoggingTab
+                redirectStderr={redirectStderr}
+                stdoutLogfileMaxbytes={stdoutLogfileMaxbytes}
+                stdoutLogfileBackups={stdoutLogfileBackups}
+                stderrLogfileMaxbytes={stderrLogfileMaxbytes}
+                stderrLogfileBackups={stderrLogfileBackups}
+                logLevel={logLevel}
+                serverId={editingId || undefined}
+                onRedirectStderr={setRedirectStderr}
+                onStdoutLogfileMaxbytes={setStdoutLogfileMaxbytes}
+                onStdoutLogfileBackups={setStdoutLogfileBackups}
+                onStderrLogfileMaxbytes={setStderrLogfileMaxbytes}
+                onStderrLogfileBackups={setStderrLogfileBackups}
+                onLogLevelChange={setLogLevel}
+              />
+            </TabsContent>
+
             <TabsContent value="tools">
               <ToolsTab
                 tools={tools}
@@ -517,22 +739,25 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 onTaskUninstallChange={setTaskUninstall}
               />
             </TabsContent>
+
+            <TabsContent value="files">
+              <FilesTab
+                serverId={editingId || ''}
+                serverConfig={getCurrentServerConfig()}
+              />
+            </TabsContent>
               </Tabs>
             </div>
 
               {/* Computed Values Sidebar */}
               <div className="w-80 space-y-4">
-                <Button className="w-full h-10 text-sm font-medium">
-                  <Download className="mr-2 h-5 w-5" />
-                  Import
-                </Button>
                 <div className="bg-muted/50 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">Computed Values</h3>
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-muted-foreground">Working Directory</label>
                       <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
-                        {name ? `/app/servers/${name}` : '/app/servers/{name}'}
+                        {editingId ? `/app/servers/${editingId}` : name ? `/app/servers/{id}` : '/app/servers/{id}'}
                       </div>
                     </div>
                     <div>
@@ -552,23 +777,15 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2 border-t pt-6">
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingId ? 'Update Server' : 'Create Server'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCancel}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-            </div>
+
           </form>
       </div>
+
+      <McpServerImport
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImport={handleImport}
+      />
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { ServerEditPage } from './pages/ServerEditPage'
 import { ProcessesPage } from './pages/ProcessesPage'
 import { Loader2 } from "lucide-react"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/sonner"
 
 function AppContent() {
   const { isAuthenticated, loading } = useAuth()
@@ -46,6 +47,7 @@ export default function App() {
       <BrowserRouter>
         <AppContent />
       </BrowserRouter>
+      <Toaster position="top-center" />
     </TooltipProvider>
   )
 }

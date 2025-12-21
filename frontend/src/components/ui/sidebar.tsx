@@ -21,7 +21,7 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navItems = [
     { label: 'Dashboard', path: '/', icon: Home },
-    { label: 'Servers', path: '/servers', icon: Server },
+    { label: 'Server Configs', path: '/servers', icon: Server },
     { label: 'Processes', path: '/processes', icon: Activity },
   ]
 

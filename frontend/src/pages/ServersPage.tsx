@@ -2,18 +2,19 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServers } from '../hooks/useServers'
 import { apiClient } from '../api/client'
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Loader2, Plus, RefreshCw, Trash2, Edit } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function ServersPage() {
   const navigate = useNavigate()
@@ -28,7 +29,9 @@ export function ServersPage() {
     try {
       const response = await apiClient.syncServers()
       await fetchServers()
-      alert(`✓ ${response.message}`)
+      toast.success(response.message, {
+        position: 'top-center'
+      })
     } catch (err: any) {
       setSyncError(err.response?.data?.detail || 'Sync failed')
     } finally {
@@ -41,7 +44,9 @@ export function ServersPage() {
       try {
         await deleteServer(id)
       } catch (err: any) {
-        alert(err.message || 'Failed to delete server')
+        toast.error(err.message || 'Failed to delete server', {
+          position: 'top-center'
+        })
       }
     }
   }
@@ -71,8 +76,8 @@ export function ServersPage() {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">MCP Server Configurations</h1>
-          <p className="text-muted-foreground">Manage your MCP server instances and their configurations.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Server Configurations</h1>
+          <p className="text-muted-foreground">Manage your MCP server settings, environment, and tooling setup.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -92,7 +97,7 @@ export function ServersPage() {
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            Sync Processes
+            Sync Servers
           </Button>
         </div>
       </div>

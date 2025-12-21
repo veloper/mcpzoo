@@ -41,32 +41,31 @@ class SupervisordService:
         try:
             info_response = self.get_all_process_info()
             programs = []
-            
+
             for process_info in info_response.processes:
-                if process_info.name.startswith('mcp_'):
-                    # Create Process model from supervisor info
-                    process = Process(
-                        pid=process_info.pid,
-                        name=process_info.name,
-                        state=self._map_supervisor_state(process_info.state),
-                        uptime=process_info.uptime,
-                        exit_code=process_info.exitstatus if process_info.exitstatus > 0 else None,
-                        manager="supervisor"
-                    )
-                    
-                    # Create SupervisorConf from supervisor info
-                    config = SupervisorConf(
-                        name=process_info.name,
-                        command=""  # Would need to fetch from config file
-                    )
-                    
-                    # Create Program combining config and process
-                    program = Program(
-                        config=config,
-                        process=process
-                    )
-                    programs.append(program)
-            
+                # Create Process model from supervisor info
+                process = Process(
+                    pid=process_info.pid,
+                    name=process_info.name,
+                    state=self._map_supervisor_state(process_info.state),
+                    uptime=process_info.uptime,
+                    exit_code=process_info.exitstatus if process_info.exitstatus > 0 else None,
+                    manager="supervisor"
+                )
+
+                # Create SupervisorConf from supervisor info
+                config = SupervisorConf(
+                    name=process_info.name,
+                    command=""  # Would need to fetch from config file
+                )
+
+                # Create Program combining config and process
+                program = Program(
+                    config=config,
+                    process=process
+                )
+                programs.append(program)
+
             return programs
         except Exception as e:
             raise RuntimeError(f"Failed to get programs: {str(e)}")
@@ -152,18 +151,75 @@ class SupervisordService:
         except Exception as e:
             raise RuntimeError(f"Failed to get process info: {str(e)}")
     
-    async def reread_config(self) -> SupervisorReadConfigResponse:
-        """Reread config files and return response."""
+    def reread_config(self) -> SupervisorReadConfigResponse:
+        """Reread and update supervisord config using supervisorctl commands."""
         try:
-            data: Any = self.proxy.supervisor.rereadConfig()
-            # rereadConfig returns [[added], [changed], [removed]]
-            return SupervisorReadConfigResponse(
-                added_group_names=data[0],
-                changed_group_names=data[1],
-                removed_group_names=data[2]
+            # Use supervisorctl commands instead of XML-RPC
+            import subprocess
+
+            # First run 'supervisorctl reread' to read config files
+            reread_result = subprocess.run(
+                ["supervisorctl", "reread"],
+                capture_output=True,
+                text=True,
+                timeout=30
             )
+
+            # Then run 'supervisorctl update' to apply changes
+            update_result = subprocess.run(
+                ["supervisorctl", "update"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if update_result.returncode == 0:
+                # Parse the output to extract added/changed/removed groups
+                # supervisorctl update output shows which groups were affected
+                output = update_result.stdout.strip()
+
+                # Simple parsing - look for patterns like "group: added", "group: changed", etc.
+                added_groups = []
+                changed_groups = []
+                removed_groups = []
+
+                for line in output.split('\n'):
+                    line = line.strip()
+                    if ': added' in line:
+                        group = line.split(': added')[0].strip()
+                        added_groups.append(group)
+                    elif ': changed' in line:
+                        group = line.split(': changed')[0].strip()
+                        changed_groups.append(group)
+                    elif ': removed' in line:
+                        group = line.split(': removed')[0].strip()
+                        removed_groups.append(group)
+
+                return SupervisorReadConfigResponse(
+                    added_group_names=added_groups,
+                    changed_group_names=changed_groups,
+                    removed_group_names=removed_groups
+                )
+            else:
+                # If update failed, try reload as fallback
+                reload_result = subprocess.run(
+                    ["supervisorctl", "reload"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+
+                if reload_result.returncode == 0:
+                    return SupervisorReadConfigResponse(
+                        added_group_names=[],  # Reload doesn't provide detailed info
+                        changed_group_names=[],
+                        removed_group_names=[]
+                    )
+                else:
+                    raise RuntimeError(f"supervisorctl reload failed: {reload_result.stderr}")
+
         except Exception as e:
-            raise RuntimeError(f"Failed to reread config: {str(e)}")
+            raise RuntimeError(f"Failed to reread supervisord config: {str(e)}")
     
     async def update(self) -> SupervisorUpdateResponse:
         """Update supervisord from new config and return response."""

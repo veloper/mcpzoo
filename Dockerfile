@@ -34,12 +34,9 @@ COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
 # Install uv globally
-RUN pip install uv
+RUN pip install uv && uv pip install --system fastmcp
 
 # RUN parallel ::: "cd /app/backend && uv sync --frozen" "cd /app/frontend && npm install && npm run build"
-
-# Install fastmcp globally
-RUN pip install fastmcp
 
 COPY docker/ /
 RUN chmod +x /entrypoint.sh
