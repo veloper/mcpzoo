@@ -682,7 +682,6 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 numprocs={numprocs}
                 stopsignal={stopsignal}
                 stopwaitsecs={stopwaitsecs}
-                redirectStderr={redirectStderr}
                 onAutostart={setAutostart}
                 onAutorestart={setAutorestart}
                 onStartsecs={setStartsecs}
@@ -691,7 +690,6 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 onNumprocs={setNumprocs}
                 onStopsignal={setStopsignal}
                 onStopwaitsecs={setStopwaitsecs}
-                onRedirectStderr={setRedirectStderr}
               />
             </TabsContent>
 

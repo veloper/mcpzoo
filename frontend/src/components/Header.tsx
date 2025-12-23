@@ -11,7 +11,7 @@ export function Header() {
   const navItems = [
     { label: 'Home', path: '/' },
     { label: 'Servers', path: '/servers' },
-    { label: 'Processes', path: '/processes' },
+    { label: 'Programs', path: '/programs' },
   ]
 
   return (

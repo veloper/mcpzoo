@@ -8,7 +8,7 @@ from src.backend.auth import verify_token
 from src.backend.services.database import get_database_service, DatabaseService
 from src.backend.services.supervisord import get_supervisord_service
 
-router = APIRouter(prefix="/api/servers", tags=["servers"])
+router = APIRouter(prefix="/api/servers", tags=["servers"], timezone)
 
 
 @router.get("", response_model=List[dict])
@@ -69,8 +69,8 @@ async def create_server(
     server_dict = server.copy() if isinstance(server, dict) else server.model_dump()
     server_id = str(uuid.uuid4())
     server_dict["id"] = server_id
-    server_dict["created_at"] = datetime.now().isoformat()
-    server_dict["updated_at"] = datetime.now().isoformat()
+    server_dict["created_at"] = datetime.now(timezone.utc).isoformat()
+    server_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
     async with db_service as db:
         servers_table = db.table('servers')
         servers_table.insert(server_dict)
@@ -115,7 +115,7 @@ async def update_server(
         
         server_dict = server.copy() if isinstance(server, dict) else server.model_dump()
         server_dict["id"] = server_id
-        server_dict["updated_at"] = datetime.now().isoformat()
+        server_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
         servers_table.update(server_dict, Server.id == server_id)
     return {"id": server_id, **server_dict}
 

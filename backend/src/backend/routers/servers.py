@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
 from src.backend.models import (FastMcpServerProxyServerFile, MCPServerConfig, McpServerDirectory, McpServersJsonFile,
-                                MiseTomlFile, SupervisordConfFile)
+                                MiseTomlFile, SupervisordConfFile, timezone)
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisord import SupervisordService, get_supervisord_service
@@ -69,7 +69,7 @@ async def sync_processes(
                 directories.append(directory)
 
                 # Update synced_at timestamp
-                server_data["synced_at"] = datetime.now().isoformat()
+                server_data["synced_at"] = datetime.now(timezone.utc).isoformat()
                 synced_servers.append(server_data)
 
                 logger.info(f"Loaded McpDirectory for server: {server_config.name} (ID: {server_config.id})")
@@ -219,7 +219,7 @@ async def update_server(
         server_dict = server_config.model_dump()
         logger.info(f"Validated server config: {server_dict}")
         server_dict["id"] = server_id
-        server_dict["updated_at"] = datetime.now().isoformat()
+        server_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # Always assign port for all transports (ignore any port in request)
         transport = server_dict.get("transport")

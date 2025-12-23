@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: mcpzoo-dev
+    container_name: "mcpzoo"
     restart: always
     ports:
       - "8001:8001"

@@ -34,7 +34,10 @@ COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
 # Install uv globally
-RUN pip install uv && uv pip install --system fastmcp
+RUN pip install uv 
+
+# Install fastmcp into the system Python environment so it is available at /usr/local/bin
+RUN python -m pip install --no-cache-dir fastmcp
 
 # RUN parallel ::: "cd /app/backend && uv sync --frozen" "cd /app/frontend && npm install && npm run build"
 

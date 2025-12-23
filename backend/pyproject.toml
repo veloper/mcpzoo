@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "httpx>=0.28.1",
     "fastmcp",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]

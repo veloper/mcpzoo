@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServers } from '../hooks/useServers'
 import { apiClient } from '../api/client'
+import { Page } from '@/components/Page'
 import {
   Table,
   TableBody,
@@ -15,27 +16,35 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Loader2, Plus, RefreshCw, Trash2, Edit } from 'lucide-react'
 import { toast } from 'sonner'
+import { SyncProgressDialog } from '@/components/SyncProgressDialog'
 
 export function ServersPage() {
   const navigate = useNavigate()
   const { servers, loading, error, deleteServer, fetchServers } = useServers()
-  const [syncing, setSyncing] = React.useState(false)
+  const [syncTaskId, setSyncTaskId] = React.useState<string | null>(null)
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = React.useState(false)
+  const [syncStarting, setSyncStarting] = React.useState(false)
   const [syncError, setSyncError] = React.useState('')
 
   const handleSync = async () => {
-    setSyncing(true)
+    setSyncStarting(true)
     setSyncError('')
 
     try {
-      const response = await apiClient.syncServers()
-      await fetchServers()
-      toast.success(response.message, {
+      const response = await apiClient.startSync()
+      setSyncTaskId(response.task_id)
+      setIsSyncDialogOpen(true)
+      toast.success('Sync task started', {
         position: 'top-center'
       })
     } catch (err: any) {
-      setSyncError(err.response?.data?.detail || 'Sync failed')
+      const errorMsg = err.response?.data?.detail || 'Failed to start sync'
+      setSyncError(errorMsg)
+      toast.error(errorMsg, {
+        position: 'top-center'
+      })
     } finally {
-      setSyncing(false)
+      setSyncStarting(false)
     }
   }
 
@@ -60,7 +69,7 @@ export function ServersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <Page title="Servers" subtitle="Manage your MCP server settings, environment, and tooling setup.">
       {error && (
         <Alert variant="destructive">
           <AlertTitle>Error</AlertTitle>
@@ -75,10 +84,7 @@ export function ServersPage() {
       )}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Server Configurations</h1>
-          <p className="text-muted-foreground">Manage your MCP server settings, environment, and tooling setup.</p>
-        </div>
+        <div />
         <div className="flex items-center gap-2">
           <Button
             variant="default"
@@ -89,10 +95,10 @@ export function ServersPage() {
           <Button
             variant="secondary"
             onClick={handleSync}
-            disabled={syncing || servers.length === 0}
-            title="Write all configs to disk and restart supervisord"
+            disabled={syncStarting || servers.length === 0}
+            title="Start background sync of all servers"
           >
-            {syncing ? (
+            {syncStarting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -110,7 +116,7 @@ export function ServersPage() {
           </AlertDescription>
         </Alert>
       ) : (
-        <div className="rounded-md border">
+        <div className="rounded-md border mt-4">
           <Table>
             <TableHeader>
               <TableRow>
@@ -155,6 +161,16 @@ export function ServersPage() {
           </Table>
         </div>
       )}
-    </div>
+
+      <SyncProgressDialog
+        isOpen={isSyncDialogOpen}
+        taskId={syncTaskId}
+        onClose={() => {
+          setIsSyncDialogOpen(false)
+          setSyncTaskId(null)
+          fetchServers()
+        }}
+      />
+    </Page>
   )
 }

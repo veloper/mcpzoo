@@ -8,6 +8,8 @@ import {
   Home,
   Server,
   Activity,
+  Cpu,
+  RefreshCw,
   Settings,
   LogOut
 } from 'lucide-react'
@@ -21,8 +23,10 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navItems = [
     { label: 'Dashboard', path: '/', icon: Home },
-    { label: 'Server Configs', path: '/servers', icon: Server },
-    { label: 'Processes', path: '/processes', icon: Activity },
+    { label: 'Servers', path: '/servers', icon: Server },
+    { label: 'Programs', path: '/programs', icon: Activity },
+    { label: 'Processes', path: '/processes', icon: Cpu },
+    { label: 'Syncs', path: '/syncs', icon: RefreshCw },
   ]
 
   return (

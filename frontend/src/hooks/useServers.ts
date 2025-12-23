@@ -45,7 +45,7 @@ export function useServers() {
 
   const startServer = async (id: string) => {
     try {
-      await apiClient.startProcess(`mcp_${servers.find(s => s.id === id)?.name}`)
+      await apiClient.startProgram(`mcp_${servers.find(s => s.id === id)?.name}`)
       await fetchServers()
     } catch (err: any) {
       setError(err.message || 'Failed to start server')
@@ -55,7 +55,7 @@ export function useServers() {
 
   const stopServer = async (id: string) => {
     try {
-      await apiClient.stopProcess(`mcp_${servers.find(s => s.id === id)?.name}`)
+      await apiClient.stopProgram(`mcp_${servers.find(s => s.id === id)?.name}`)
       await fetchServers()
     } catch (err: any) {
       setError(err.message || 'Failed to stop server')

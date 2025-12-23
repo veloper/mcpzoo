@@ -1,4 +1,4 @@
-import asyncio, uuid
+import asyncio, json, uuid
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,12 +17,29 @@ class Database:
         """Initialize database."""
         db_path = Path(settings.tinydb_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Check if database file exists and is valid JSON
+        if db_path.exists():
+            try:
+                with open(db_path, 'r') as f:
+                    json.load(f)  # Validate JSON
+            except json.JSONDecodeError as e:
+                # JSON is corrupted, create backup and remove it
+                backup_path = db_path.with_suffix('.json.backup')
+                print(f"Warning: Database file {db_path} has corrupted JSON ({e}), creating backup at {backup_path} and creating new database")
+                db_path.replace(backup_path)
+            except IOError as e:
+                # File is unreadable, create backup and remove it
+                backup_path = db_path.with_suffix('.json.backup')
+                print(f"Warning: Database file {db_path} is unreadable ({e}), creating backup at {backup_path} and creating new database")
+                db_path.replace(backup_path)
+
         self.db = TinyDB(str(db_path))
         self._ensure_tables()
     
     def _ensure_tables(self):
         """Ensure required tables exist."""
-        for table_name in ["servers", "processes", "logs"]:
+        for table_name in ["servers", "processes", "logs", "sync_tasks"]:
             if table_name not in self.db.tables():
                 self.db.table(table_name)
     

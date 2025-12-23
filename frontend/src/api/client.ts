@@ -89,7 +89,7 @@ class APIClient {
   }
 
   async rereadConfig() {
-    const response = await this.client.put('/processes/reread_config')
+    const response = await this.client.put('/programs/reread_config')
     return response.data
   }
 
@@ -136,23 +136,60 @@ class APIClient {
     return response.data
   }
 
-  async listProcesses() {
-    const response = await this.client.get('/processes')
+  async listPrograms() {
+    const response = await this.client.get('/programs')
     return response.data
   }
 
-  async startProcess(name: string) {
-    const response = await this.client.post(`/processes/${name}/start`)
+  async getProgram(name: string) {
+    // Returns the program status object for a single program
+    const response = await this.client.get(`/programs/${name}/status`)
     return response.data
   }
 
-  async stopProcess(name: string) {
-    const response = await this.client.post(`/processes/${name}/stop`)
+  async startProgram(name: string) {
+    const response = await this.client.post(`/programs/${name}/start`)
     return response.data
   }
 
-  async getProcessLogs(name: string) {
-    const response = await this.client.get(`/processes/${name}/logs`)
+  async stopProgram(name: string) {
+    const response = await this.client.post(`/programs/${name}/stop`)
+    return response.data
+  }
+
+  async getProgramLogs(name: string) {
+    const response = await this.client.get(`/programs/${name}/logs`)
+    return response.data
+  }
+
+  async getProcessTree() {
+    const response = await this.client.get('/processes/tree')
+    return response.data
+  }
+
+  async getProgramStats(pids: number[]) {
+    const response = await this.client.post('/programs/stats', pids)
+    const data = response.data
+    return data.test || data
+  }
+
+  async startSync() {
+    const response = await this.client.post('/sync')
+    return response.data
+  }
+
+  async getSyncStatus(taskId: string) {
+    const response = await this.client.get(`/sync/${taskId}`)
+    return response.data
+  }
+
+  async listSyncs(limit: number = 50, offset: number = 0) {
+    const response = await this.client.get('/sync', { params: { limit, offset } })
+    return response.data
+  }
+
+  async getSyncLogs(taskId: string, tail: number = 100) {
+    const response = await this.client.get(`/sync/${taskId}/logs`, { params: { tail } })
     return response.data
   }
 }

@@ -1,0 +1,9 @@
+## Testing Rules
+
+### ⚠️ **CRITICAL: Never Test by Running Backend/Frontend**
+- **DO NOT** run backend servers (uvicorn, fastapi, etc.) to test code changes
+- **DO NOT** run frontend dev servers (npm run dev, vite, etc.) to test functionality
+- **DO NOT** start any development servers for testing purposes
+- **DO NOT** assume servers need to be running to verify code works
+- Only run servers if explicitly requested by the user
+- Focus on code changes, not runtime testing or verification

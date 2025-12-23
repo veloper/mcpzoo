@@ -20,7 +20,6 @@ interface ProcessTabProps {
   numprocs: number
   stopsignal: string
   stopwaitsecs: number
-  redirectStderr: boolean
   onAutostart: (value: boolean) => void
   onAutorestart: (value: string) => void
   onStartsecs: (value: number) => void
@@ -29,7 +28,6 @@ interface ProcessTabProps {
   onNumprocs: (value: number) => void
   onStopsignal: (value: string) => void
   onStopwaitsecs: (value: number) => void
-  onRedirectStderr: (value: boolean) => void
 }
 
 export function ProcessTab({
@@ -41,7 +39,6 @@ export function ProcessTab({
   numprocs,
   stopsignal,
   stopwaitsecs,
-  redirectStderr,
   onAutostart,
   onAutorestart,
   onStartsecs,
@@ -50,7 +47,6 @@ export function ProcessTab({
   onNumprocs,
   onStopsignal,
   onStopwaitsecs,
-  onRedirectStderr,
 }: ProcessTabProps) {
   return (
     <Card>
@@ -159,18 +155,6 @@ export function ProcessTab({
               min={1}
             />
           </div>
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-1">
-            <Label htmlFor="redirectstderr" className="text-base">Redirect stderr</Label>
-            <p className="text-xs text-muted-foreground">Redirect stderr to stdout</p>
-          </div>
-          <Switch
-            id="redirectstderr"
-            checked={redirectStderr}
-            onCheckedChange={onRedirectStderr}
-          />
         </div>
       </CardContent>
     </Card>

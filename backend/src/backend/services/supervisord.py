@@ -9,6 +9,11 @@ from src.backend.models import (Process, ProcessState, Program, SupervisorConf, 
                                 SupervisorStopProcessResponse, SupervisorUpdateResponse)
 
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 class UnixHTTPConnection(http.client.HTTPConnection):
     def __init__(self, host, socket_path):
         super().__init__(host)
@@ -37,12 +42,16 @@ class SupervisordService:
         self.proxy = xmlrpc.client.ServerProxy('http://localhost', transport=self.transport)
     
     async def get_all_programs(self) -> List[Program]:
-        """Get all supervisor programs as typed Program models."""
+        """Get all supervisor programs as typed Program models, excluding web group processes."""
         try:
             info_response = self.get_all_process_info()
             programs = []
 
             for process_info in info_response.processes:
+                # Skip processes in the 'web' group
+                if process_info.group == "web":
+                    continue
+
                 # Create Process model from supervisor info
                 process = Process(
                     pid=process_info.pid,
@@ -221,16 +230,49 @@ class SupervisordService:
         except Exception as e:
             raise RuntimeError(f"Failed to reread supervisord config: {str(e)}")
     
-    async def update(self) -> SupervisorUpdateResponse:
-        """Update supervisord from new config and return response."""
+    def update(self) -> SupervisorUpdateResponse:
+        """Update supervisord from new config using supervisorctl command."""
         try:
-            # update() returns [[added], [changed], [removed]]
-            data: Any = self.proxy.supervisor.update()
-            return SupervisorUpdateResponse(
-                added_group_names=data[0],
-                changed_group_names=data[1],
-                removed_group_names=data[2]
+            import subprocess
+
+            # Use supervisorctl update command instead of XML-RPC
+            result = subprocess.run(
+                ["supervisorctl", "update"],
+                capture_output=True,
+                text=True,
+                timeout=30
             )
+            
+            if result.returncode == 0:
+                # Parse the output to extract added/changed/removed groups
+                output = result.stdout.strip()
+                
+                added_groups = []
+                changed_groups = []
+                removed_groups = []
+                
+                for line in output.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if ': added' in line:
+                        group = line.split(': added')[0].strip()
+                        added_groups.append(group)
+                    elif ': changed' in line:
+                        group = line.split(': changed')[0].strip()
+                        changed_groups.append(group)
+                    elif ': removed' in line:
+                        group = line.split(': removed')[0].strip()
+                        removed_groups.append(group)
+                
+                return SupervisorUpdateResponse(
+                    added_group_names=added_groups,
+                    changed_group_names=changed_groups,
+                    removed_group_names=removed_groups
+                )
+            else:
+                raise RuntimeError(f"supervisorctl update failed: {result.stderr}")
+                
         except Exception as e:
             raise RuntimeError(f"Failed to update supervisord: {str(e)}")
 

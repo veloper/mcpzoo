@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src.backend.auth import verify_token
-from src.backend.routers import auth, processes, servers, tools
+from src.backend.routers import auth, processes, programs, servers, sync, tools
 from src.backend.services.logging import logger
 
 
@@ -23,7 +23,9 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(servers.router)
+app.include_router(programs.router)
 app.include_router(processes.router)
+app.include_router(sync.router)
 app.include_router(tools.router)
 
 
