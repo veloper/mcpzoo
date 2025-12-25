@@ -53,7 +53,7 @@ class SyncService:
             total_servers=0,
         )
         
-        async with database_service as db:
+        with database_service as db:
             sync_tasks_table = db.table("sync_tasks")
             sync_tasks_table.insert(task.model_dump())
         
@@ -365,7 +365,7 @@ class SyncService:
             Task data or None if not found
         """
         try:
-            async with database_service as db:
+            with database_service as db:
                 sync_tasks_table = db.table("sync_tasks")
                 from tinydb import Query
                 Task = Query()
@@ -385,7 +385,7 @@ class SyncService:
             Dict with tasks list and pagination info
         """
         try:
-            async with database_service as db:
+            with database_service as db:
                 sync_tasks_table = db.table("sync_tasks")
                 all_tasks = sync_tasks_table.all()
                 

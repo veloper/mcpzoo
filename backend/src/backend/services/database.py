@@ -1,6 +1,6 @@
 import asyncio, uuid
 
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from src.backend.tinydb import db
@@ -13,12 +13,12 @@ class DatabaseService:
         """Initialize with optional database instance (for testing)."""
         self._db = database or db
     
-    async def __aenter__(self):
-        """Async context manager entry - yields raw TinyDB object."""
+    def __enter__(self):
+        """Context manager entry - yields raw TinyDB object."""
         return self._db.db
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
         pass
 
 

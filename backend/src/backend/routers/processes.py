@@ -19,4 +19,4 @@ async def get_process_tree(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get process tree: {str(e)}"
-        )
+        ) from e

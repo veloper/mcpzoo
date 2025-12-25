@@ -959,6 +959,10 @@ class CommandReturn(BaseModel):
     
     def is_success(self) -> bool: return self.returncode == 0
     def is_failure(self) -> bool: return self.returncode != 0
+    
+    @property
+    def combined(self) -> str:
+        return self.stdout + "\n" + self.stderr
 
 class McpServerDirectory(BaseModel):
     """MCP server directory manager - creates and syncs server directories and files.
@@ -1017,17 +1021,17 @@ class McpServerDirectory(BaseModel):
         
         cmd_return = self.run_mise_install()
         if cmd_return.is_failure():
-            if logger: logger.error(f"Mise install failed for server {ident}:\n{cmd_return.stderr}")
-            raise RuntimeError(f"Mise install failed for server {ident}:\n{cmd_return.stderr}")
+            if logger: logger.error(f"Mise install failed for server {ident}:\n{cmd_return.combined}")
+            raise RuntimeError(f"Mise install failed for server {ident}:\n{cmd_return.combined}")
         else:
-            if logger: logger.info(f"Mise install output for server {ident}:\n{cmd_return.stdout}")
+            if logger: logger.info(f"Mise install output for server {ident}:\n{cmd_return.combined}")
             
         cmd_return = self.run_mise_task_install()
         if cmd_return.is_failure():
-            if logger: logger.error(f"Mise install task failed for server {ident}:\n{cmd_return.stderr}")
-            raise RuntimeError(f"Mise install task failed for server {ident}:\n{cmd_return.stderr}")
+            if logger: logger.error(f"Mise install task failed for server {ident}:\n{cmd_return.combined}")
+            raise RuntimeError(f"Mise install task failed for server {ident}:\n{cmd_return.combined}")
         else:
-            if logger: logger.info(f"Mise install task output for server {ident}:\n{cmd_return.stdout}")
+            if logger: logger.info(f"Mise install task output for server {ident}:\n{cmd_return.combined}")
             
             
         if logger: logger.info(f"Completed MISE installation for server: {ident}")
@@ -1074,7 +1078,7 @@ class McpServerDirectory(BaseModel):
                 
             # Change to server directory and run mise install (installs tools)
             result = subprocess.run(
-                ["mise", "install"],
+                ["mise", "install", "--verbose"],
                 cwd=str(self.path),
                 capture_output=True,
                 text=True,
@@ -1139,10 +1143,10 @@ class McpServerDirectory(BaseModel):
             "fastmcp", 
             "run", 
             "server.py", 
-            "--host", "127.0.0.1",
+            "--host", "0.0.0.0",
             "--port", str(self.server_config.port), 
             "--log-level", self.server_config.log_level.value,
-            "--transport", self.server_config.transport.value,
+            "--transport", "http",
             "--project", str(self.path),
             "--no-banner"
         ]
@@ -1169,7 +1173,6 @@ class McpServerDirectory(BaseModel):
             command = self.server_config.command
             if command in ["pipx"]:
                 self.mise_toml_file.ensure_tool("python")
-                self.mise_toml_file.ensure_tool("pipx")
             
             elif command in ["python"]:
                 self.mise_toml_file.ensure_tool("python")
@@ -1185,11 +1188,7 @@ class McpServerDirectory(BaseModel):
                 self.mise_toml_file.ensure_tool("go")
                 
             elif command in ["node", "npm", "npx"]:
-                self.mise_toml_file.ensure_tool("node")
-                self.mise_toml_file.ensure_tool("npm")
-                
-        # fastmcp via pipx
-        self.mise_toml_file.ensure_tool('"pipx:fastmcp"')
+                self.mise_toml_file.ensure_tool("node", version="lts")
                 
         # == Supervisord ==   
 
@@ -1251,34 +1250,3 @@ class McpServerDirectory(BaseModel):
         (self.path / "server.py").write_text(str(self.fastmcp_server_proxy_server_file))
         (self.path / "supervisord.conf").write_text(str(self.supervisord_conf_file))
         (self.path / "mise.toml").write_text(str(self.mise_toml_file))
-
-    def install_dependencies(self) -> None:
-        """Install dependencies using mise."""
-        import subprocess
-
-        # Change to server directory and run mise install (installs tools)
-        result = subprocess.run(
-            ["mise", "install"],
-            cwd=self.path,
-            capture_output=True,
-            text=True
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to install mise tools: {result.stderr}")
-
-        # Try to run the install task if it exists
-        try:
-            result = subprocess.run(
-                ["mise", "run", "install"],
-                cwd=self.path,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout for install tasks
-            )
-            # If the task doesn't exist, mise returns exit code 1 with "mise No such task 'install'"
-            # We don't raise an error for this case since it's optional
-            if result.returncode != 0 and "No such task 'install'" not in result.stderr:
-                raise RuntimeError(f"Failed to run install task: {result.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Install task timed out after 5 minutes")

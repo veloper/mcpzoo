@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
     model_config = SettingsConfigDict(
         case_sensitive=False,
-        extra="ignore",  # Ignore extra fields like NGINX_PORT
+        extra="ignore",
         env_file=None,  # Will be set dynamically
     )
     
@@ -29,15 +29,13 @@ class Settings(BaseSettings):
     jwt_token_refresh_days: int = 7
     
     # Server
-    fastapi_host: str = "127.0.0.1"
-    fastapi_port: int = 8001
+    backend_web_port: int = 7998
+    frontend_web_port: int = 7999
     
     # Database
     tinydb_path: str = "/app/data/tinydb.json"
     
     # MCP
-    mcp_port_min: int = 8100
-    mcp_port_max: int = 8199
     mcp_server_path: str = "/app/servers"
     
     # Logging

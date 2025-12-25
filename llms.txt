@@ -282,7 +282,7 @@ mcpzoo/
 docker-compose up --build
 
 # Or run separately:
-# Backend: cd backend && uv run python -m uvicorn src.backend.main:app --host 127.0.0.1 --port 8001 --reload
+# Backend: cd backend && uv run python -m uvicorn src.backend.main:app --host 127.0.0.1 --port 7998 --reload
 # Frontend: cd frontend && npm install && npm run dev
 ```
 

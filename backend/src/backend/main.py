@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from src.backend.auth import verify_token
 from src.backend.routers import auth, processes, programs, servers, sync, tools
 from src.backend.services.logging import logger
+from src.backend.settings import get_settings
 
 
 app = FastAPI(title="MCPZoo", version="0.1.0")
@@ -84,6 +85,9 @@ if static_path.exists():
     app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
 
 
+
+settings = get_settings()
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run(app, host="127.0.0.1", port=settings.backend_web_port)

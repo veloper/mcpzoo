@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.28.1",
     "fastmcp",
     "psutil>=5.9.0",
+    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]

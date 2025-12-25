@@ -22,14 +22,12 @@ async def list_processes(
     """List all supervisor programs."""
     try:
         programs = await srv.get_all_programs()
-        return [p.model_dump() for p in programs]
+        return [p.model_dump() for p in programs if p.name != "overmind"]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list programs: {str(e)}"
         )
-
-
 
 
 @router.post("/{name}/start")
@@ -109,7 +107,7 @@ async def get_process_logs(
             server_name = name[4:]  # Remove 'mcp_' prefix
 
         # Look up server config by name
-        async with db_service as db:
+        with db_service as db:
             servers_table = db.table('servers')
             Server = Query()
             server_data = servers_table.get(Server.name == server_name)

@@ -11,10 +11,45 @@ from src.backend.models import (FastMcpServerProxyServerFile, MCPServerConfig, M
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisord import SupervisordService, get_supervisord_service
+from src.backend.settings import get_settings
 from tinydb import Query
 
 
+settings = get_settings()
 router = APIRouter(prefix="/api/servers", tags=["servers"])
+
+def get_next_available_mcp_server_port(db_service: DatabaseService) -> int:
+    """
+    We make an assumption that ports will go up one past the web_port
+    and up to 200.
+    """
+    web_port = settings.frontend_web_port
+    start_port = web_port + 1
+    end_port = start_port + 200
+
+    # Get all existing servers to check assigned ports
+    with db_service as db:
+        servers_table = db.table('servers')
+        existing_servers = servers_table.all()
+
+    # Collect ports already assigned to servers
+    assigned_ports = set()
+    for existing_server in existing_servers:
+        if existing_server.get("port"):
+            assigned_ports.add(existing_server["port"])
+
+    # make range set of ports, then remove assigned ports
+    available_ports = set(range(start_port, end_port + 1))
+    available_ports -= assigned_ports
+    
+    if available_ports:
+        return min(available_ports)
+    
+    # All ports in range are assigned
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="No available ports in range 8100-8199",
+    )
 
 
 @router.get("", response_model=List[dict])
@@ -25,7 +60,7 @@ async def list_servers(
     """List all MCP servers."""
     logger.info(f"list_servers called by user: {username}")
     try:
-        async with db_service as db:
+        with db_service as db:
             servers_table = db.table('servers')
             servers = servers_table.all()
             logger.info(f"Found {len(servers)} servers")
@@ -53,7 +88,7 @@ async def sync_processes(
     5. Installs MISE dependencies (if needed)
     """
     try:
-        async with db_service as db:
+        with db_service as db:
             servers_table = db.table('servers')
             servers = servers_table.all()
 
@@ -127,7 +162,7 @@ async def get_server(
     """Get specific server."""
     logger.info(f"get_server called by user: {username} for server_id: {server_id}")
     try:
-        async with db_service as db:
+        with db_service as db:
             servers_table = db.table('servers')
             Server = Query()
             server = servers_table.get(Server.id == server_id)
@@ -158,40 +193,17 @@ async def create_server(
     # Generate ID before validation since MCPServerConfig requires it
     server_id = str(uuid.uuid4())
     server["id"] = server_id
+    server["port"] = get_next_available_mcp_server_port(db_service)
 
     # Validate incoming data using MCPServerConfig model
     server_config = MCPServerConfig.model_validate(server)
+    
     server_dict = server_config.model_dump()
 
-    # Always assign port for all transports (ignore any port in request)
-    transport = server_dict.get("transport")
-    if transport:
-        # Get all existing servers to check assigned ports
-        async with db_service as db:
-            servers_table = db.table('servers')
-            existing_servers = servers_table.all()
-
-        # Collect ports already assigned to other servers
-        assigned_ports = set()
-        for existing_server in existing_servers:
-            if existing_server.get("port"):
-                assigned_ports.add(existing_server["port"])
-
-        # Find first available port in 8100-8199 range
-        for port in range(8100, 8200):  # 8100 to 8199 inclusive
-            if port not in assigned_ports:
-                server_dict["port"] = port
-                break
-        else:
-            # All ports in range are assigned
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="No available ports in range 8100-8199",
-            )
-
-    async with db_service as db:
+    with db_service as db:
         servers_table = db.table('servers')
         servers_table.insert(server_dict)
+        
     return {"id": server_id, **server_dict}
 
 
@@ -204,7 +216,7 @@ async def update_server(
     db_service: DatabaseService = Depends(get_database_service),
 ):
     """Update server configuration."""
-    async with db_service as db:
+    with db_service as db:
         servers_table = db.table('servers')
         Server = Query()
         existing_server = servers_table.get(Server.id == server_id)
@@ -265,7 +277,7 @@ async def get_server_logs(
     Type can be 'stdout' or 'stderr'.
     Returns last 100 lines of the requested logfile.
     """
-    async with db_service as db:
+    with db_service as db:
         servers_table = db.table('servers')
         Server = Query()
         server = servers_table.get(Server.id == server_id)
@@ -296,7 +308,7 @@ async def delete_server(
     db_service: DatabaseService = Depends(get_database_service),
 ):
     """Delete server configuration."""
-    async with db_service as db:
+    with db_service as db:
         servers_table = db.table('servers')
         Server = Query()
         if not servers_table.get(Server.id == server_id):
@@ -313,7 +325,7 @@ async def get_mcp_config(
     db_service: DatabaseService = Depends(get_database_service),
 ):
     """Generate mcpServer.json configuration for FastMCP proxy server."""
-    async with db_service as db:
+    with db_service as db:
         servers_table = db.table('servers')
         servers = servers_table.all()
 
@@ -396,7 +408,7 @@ async def parse_server_config(
                 # Set defaults for required fields
                 "supervisor_conf": {
                     "name": server_name,
-                    "command": "",  # Will be set by frontend
+                    "command": "",  
                     "group": "mcp_servers",
                     "autostart": True,
                     "autorestart": "unexpected",
@@ -443,7 +455,7 @@ async def get_server_files(
             config_data = server_config_data
         else:
             logger.info(f"Fetching server config from database for server: {server_id}")
-            async with db_service as db:
+            with db_service as db:
                 servers_table = db.table('servers')
                 Server = Query()
                 server_data = servers_table.get(Server.id == server_id)

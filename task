@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+import os, shutil, subprocess, sys
+
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from textwrap import dedent
+from typing import Callable
+
+
+# ======================
+# Constants
+# ======================
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+FILENAME = Path(__file__).name
+DOCKER_FILE_DEV="Dockerfile.development"
+DOCKER_FILE_PROD="Dockerfile"
+DOCKER_IMAGE_DEV = "mcpzoo-dev"
+DOCKER_IMAGE_PROD = "mcpzoo"
+DOCKER_CONTAINER_DEV = "mcpzoo-dev"
+DOCKER_CONTAINER_PROD = "mcpzoo"
+DOCKER_CONTAINER = DOCKER_CONTAINER_DEV  # Default for backward compatibility
+BACKEND_DIR = SCRIPT_DIR / "backend"
+FRONTEND_DIR = SCRIPT_DIR / "frontend"
+DOCKER_DIR = SCRIPT_DIR / "docker"
+
+
+
+# ======================
+# Helper Functions
+# ======================
+
+
+@lru_cache(maxsize=1)
+def get_overmind_path() -> Path:
+    """Get the path to the overmind executable."""
+    possible_paths = [
+        Path("/usr/local/bin/overmind"),
+        Path("/usr/bin/overmind"),
+        Path.home() / ".local" / "bin" / "overmind",
+    ]
+    for path in possible_paths:
+        if path.exists() and os.access(path, os.X_OK):
+            return path
+    raise FileNotFoundError("overmind executable not found in standard locations.")
+
+def get_docstring_from_function(func):
+    """Extract the docstring from a function."""
+    return func.__doc__ or "No documentation available."
+
+
+# Decorator Class to register commands
+@dataclass
+class Cmd:
+    func: Callable
+    name: str|None = None
+    namespace: str|None = None
+    docstring: str|None = None
+
+@dataclass
+class CliDecorator:
+    commands: list[Cmd]
+
+    def cmd(self, func=None, *, name: str | None = None, namespace: str | None = None):
+        def decorator(f):
+            if name is None:
+                func_name = f.__name__
+                # Split on __ to create namespace hierarchy
+                parts = func_name.split("__")
+                if len(parts) >= 2:
+                    # First part is namespace, remaining parts form command with spaces
+                    inferred_namespace = parts[0]
+                    inferred_name = " ".join(parts[1:]).replace("_", "-")
+                else:
+                    inferred_namespace = None
+                    inferred_name = func_name.replace("_", "-")
+                final_name = inferred_name
+                final_namespace = namespace or inferred_namespace
+            else:
+                final_name = name
+                final_namespace = namespace
+            self.commands.append(Cmd(func=f, name=final_name, namespace=final_namespace, docstring=get_docstring_from_function(f)))
+            return f
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def run(self):
+        if len(sys.argv) < 2:
+            self._print_help()
+            return
+        namespace = sys.argv[1]
+        remaining_args = sys.argv[2:]
+
+        # Check if --help is requested at namespace level
+        if remaining_args == ["--help"]:
+            self._print_namespace_help(namespace)
+            return
+
+        # Find the longest matching command for this namespace
+        matching_cmd = None
+        command_args = []
+
+        for cmd in self.commands:
+            if cmd.namespace == namespace and cmd.name:
+                cmd_parts = cmd.name.split()
+                # Check if the command matches the prefix of remaining_args
+                if len(remaining_args) >= len(cmd_parts):
+                    if remaining_args[:len(cmd_parts)] == cmd_parts:
+                        matching_cmd = cmd
+                        command_args = remaining_args[len(cmd_parts):]
+                        break
+
+        if matching_cmd:
+            # Check if --help is requested for this specific command
+            if "--help" in command_args:
+                self._print_command_help(matching_cmd)
+                return
+            matching_cmd.func(*command_args)
+            return
+
+        self._print_help()
+
+    def _print_help(self):
+        print("Available commands:")
+        for cmd in self.commands:
+            command = f"{cmd.name}"
+            if cmd.namespace:
+                command = f"{cmd.namespace} {command}"
+            command = f"./{FILENAME} {command}"
+
+
+            docstring = dedent(cmd.docstring or "").strip()
+            docstring = "    "+docstring.replace("\n", "\n    ")
+
+            print(f"\n{command}\n{docstring}")
+
+    def _print_namespace_help(self, namespace):
+        """Print help for all commands in a specific namespace."""
+        namespace_commands = [cmd for cmd in self.commands if cmd.namespace == namespace]
+        if not namespace_commands:
+            print(f"No commands found for namespace '{namespace}'")
+            return
+
+        print(f"Available commands for '{namespace}' namespace:")
+        for cmd in namespace_commands:
+            command = f"./{FILENAME} {namespace} {cmd.name}"
+
+            docstring = dedent(cmd.docstring or "").strip()
+            docstring = "    "+docstring.replace("\n", "\n    ")
+
+            print(f"\n{command}\n{docstring}")
+
+    def _print_command_help(self, cmd):
+        """Print help for a specific command."""
+        command = f"./{FILENAME} {cmd.namespace} {cmd.name}" if cmd.namespace else f"./{FILENAME} {cmd.name}"
+
+        docstring = dedent(cmd.docstring or "").strip()
+
+        print(f"{command}\n\n{docstring}")
+        
+cli = CliDecorator(commands=[])
+    
+# ======================
+# Commands
+# ======================
+
+@cli.cmd()
+def dev__env__start(*args):
+    """
+    Start the development environment using the Procfile and overmind
+
+    This is an idempotent command that can be run multiple times to ensure the
+    development environment is up and running.
+
+    By default, runs in the background (non-blocking). Use --no-daemon to run in foreground.
+
+    Logs are written to /tmp/mcpzoo-overmind.log
+
+    Example:
+        task dev start
+        task dev start --no-daemon
+    """
+    os.chdir(SCRIPT_DIR)
+
+    # Check if overmind installed?
+    try:
+        subprocess.run([str(get_overmind_path()), "--version"], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Error: overmind is not installed. Please install overmind to use this command.")
+        sys.exit(1)
+
+    # Check if overmind is running?
+    result = os.system("pgrep -f overmind > /dev/null 2>&1")
+    if result == 0:
+        print("Development environment is already running.")
+        sys.exit(0)
+
+    # Handle dangling overmind.sock
+    overmind_sock = SCRIPT_DIR / ".overmind.sock"
+    if overmind_sock.exists():
+        overmind_sock.unlink()
+
+    # Ensure logs directory exists
+    logs_dir = SCRIPT_DIR / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    log_file = Path("/tmp/mcpzoo-overmind.log")
+
+    # Determine if daemon mode or not
+    daemon_mode = True
+    filtered_args = []
+    for arg in args:
+        if arg == "--no-daemon":
+            daemon_mode = False
+        else:
+            filtered_args.append(arg)
+
+    procfile = str(SCRIPT_DIR / "Procfile")
+    if daemon_mode:
+        # Start overmind as a background process with output redirected to log file
+        cmd = [str(get_overmind_path()), "start", "--procfile", procfile] + filtered_args
+        with open(log_file, 'w') as logfile:
+            subprocess.Popen(cmd, stdout=logfile, stderr=logfile, cwd=SCRIPT_DIR)
+        print(f"Development environment started. Logs: {log_file}")
+    else:
+        cmd = [get_overmind_path(), "start", "--procfile", procfile] + filtered_args
+        os.execve(cmd[0], cmd, os.environ)
+
+@cli.cmd()
+def dev__env__stop(*args):
+    """
+    Stop the development environment by terminating the overmind process
+
+    Example:
+        task dev stop
+    """
+    os.chdir(SCRIPT_DIR)
+
+    # Check if overmind installed?
+    try:
+        subprocess.run([get_overmind_path(), "--version"], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Error: overmind is not installed. Please install overmind to use this command.")
+        sys.exit(1)
+
+    # Run overmind quit
+    os.execve(get_overmind_path(), [get_overmind_path(), "quit"] + list(args), os.environ)
+
+@cli.cmd()
+def dev__env__restart(*args):
+    """
+    Restart the development environment using overmind restart
+
+    Example:
+        task dev restart
+    """
+    os.chdir(SCRIPT_DIR)
+
+    # Check if overmind installed?
+    try:
+        subprocess.run([get_overmind_path(), "--version"], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Error: overmind is not installed. Please install overmind to use this command.")
+        sys.exit(1)
+
+    # Run overmind restart
+    os.execve(get_overmind_path(), [get_overmind_path(), "restart"] + list(args), os.environ)
+
+@cli.cmd()
+def dev__env__status(*args):
+    """
+    Check the status of the development environment using overmind status
+
+    Example:
+        task dev status
+    """
+    os.chdir(SCRIPT_DIR)
+
+    # Check if overmind installed?
+    try:
+        subprocess.run([get_overmind_path(), "--version"], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Error: overmind is not installed. Please install overmind to use this command.")
+        sys.exit(1)
+
+    # Check if overmind is running by testing the socket
+    result = subprocess.run([get_overmind_path(), "status"] + list(args),
+                          capture_output=True, text=True)
+
+    if result.returncode == 0:
+        # Overmind is running, show the status
+        print(result.stdout)
+    else:
+        # Overmind is not running
+        print("Development environment is not running.")
+        print("Start it with: ./task dev env start")
+
+@cli.cmd()
+def dev__env__logs(*args):
+    """
+    View the logs of the development environment
+
+    By default, shows a tail of the log file. Use --follow to follow logs in real-time.
+
+    Example:
+        task dev logs
+        task dev logs --follow
+    """
+    os.chdir(SCRIPT_DIR)
+
+    # Check if --follow flag is present
+    follow_mode = "--follow" in args
+    filtered_args = [arg for arg in args if arg != "--follow"]
+
+    if follow_mode:
+        # Check if overmind installed?
+        try:
+            subprocess.run([get_overmind_path(), "--version"], check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Error: overmind is not installed. Please install overmind to use this command.")
+            sys.exit(1)
+
+        # Run overmind echo to follow logs in real-time
+        os.execve(get_overmind_path(), [get_overmind_path(), "echo"] + filtered_args, os.environ)
+    else:
+        # Show tail of log file
+        log_file = Path("/tmp/mcpzoo-overmind.log")
+        if log_file.exists():
+            os.execve("/usr/bin/tail", ["/usr/bin/tail", "-n", "150", str(log_file)], os.environ)
+        else:
+            print(f"Log file not found: {log_file}")
+            sys.exit(1)
+
+@cli.cmd()
+def dev__backend__exec(*args):
+    """
+    Execute an arbitrary command inside the backend Docker container.
+
+    Example:
+        task backend exec bash
+        task backend exec ls /backend
+    """
+    cmd = [
+        "docker", "exec", "-it",
+        DOCKER_CONTAINER,
+        *args
+    ]
+    os.execvpe(cmd[0], cmd, os.environ)
+
+
+    
+
+@cli.cmd()
+def dev__frontend__build(*args):
+    """
+    Build the frontend using the local npm build process.
+
+    Additional options are passed through to npm run build.
+
+    Example:
+        task frontend build
+    """
+    os.chdir(FRONTEND_DIR)
+    cmd = ["npm", "run", "build", *args]
+    os.execvpe(cmd[0], cmd, os.environ)
+    
+@cli.cmd()
+def dev__frontend__dev(*args):
+    """
+    Start the frontend development server using npm.
+
+    Additional options are passed through to npm run dev.
+
+    Example:
+        task frontend dev
+    """
+    os.chdir(FRONTEND_DIR)
+    cmd = ["npm", "run", "dev", *args]
+    os.execvpe(cmd[0], cmd, os.environ)
+    
+
+@cli.cmd()
+def dev__docker__build(*args):
+    """
+    Build the Docker image for MCPZoo using DOCKER_FILE_DEV.
+
+    Additional options are passed through to docker build.
+
+    Example:
+        task docker build-dev
+        task docker build-dev --no-cache
+    """
+    cmd = [
+        "docker", "build",
+        "-t", DOCKER_IMAGE_DEV,
+        "-f", SCRIPT_DIR / DOCKER_FILE_DEV,
+        ".",
+        *args
+    ]
+    os.execvpe(cmd[0], cmd, os.environ)
+
+
+@cli.cmd()
+def prod__docker__build(*args):
+    """
+    Build production artifacts and Docker image for MCPZoo.
+
+    This builds the frontend/dist and creates the production Docker image.
+
+    Additional options are passed through to docker build.
+
+    After building, run the container with:
+        docker run -p 7998-8199:7998-8199 \\
+            -e APP_USERNAME=admin -e APP_PASSWORD=changeme123 \\
+            mcpzoo
+
+    Access the application at: http://localhost:7999
+
+    Example:
+        task prod build
+        task prod build --no-cache
+    """
+    # Build frontend for production
+    os.chdir(FRONTEND_DIR)
+    subprocess.run(["npm", "run", "build"], check=True)
+
+    # Build backend for production
+    os.chdir(BACKEND_DIR)
+    subprocess.run(["uv", "sync", "--frozen"], check=True)
+
+    # Build production Docker image
+    os.chdir(SCRIPT_DIR)
+    cmd = [
+        "docker", "build",
+        "-t", DOCKER_IMAGE_PROD,
+        "-f", SCRIPT_DIR / DOCKER_FILE_PROD,
+        ".",
+    ] + list(args)
+    subprocess.run(cmd, check=True)
+
+
+
+if __name__ == "__main__":
+    cli.run()

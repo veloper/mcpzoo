@@ -1,17 +1,21 @@
 FROM python:3.10-slim
 
-ENV APP_ENV=production
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    build-essential \
     supervisor \
     nginx \
-    curl \
+    nodejs \
+    npm \
+    parallel \
     tmux \
-    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Mise early
 RUN curl -L https://mise.jdx.dev/install.sh -o /tmp/mise-install.sh && sh /tmp/mise-install.sh
+
 RUN ln -s /root/.local/bin/mise /usr/local/bin/mise
 
 ENV PATH="/root/.local/bin:$PATH" \
@@ -23,20 +27,16 @@ RUN gunzip /tmp/overmind.gz \
     && mv /tmp/overmind /usr/local/bin/overmind \
     && chmod +x /usr/local/bin/overmind
 
+COPY backend/ /app/backend/
+COPY frontend/ /app/frontend/
 
-# Install only runtime dependencies
-RUN mise install python@3.10
+# Pre-install mise tools to cache them in the image
+RUN mise install node@lts 
+RUN mise install python@3.11
 RUN mise install uv@latest
 RUN mise use -g python && pip install --user pipx
 RUN mise install "pipx:fastmcp@latest"
 RUN mise cache clean
-
-# Copy built artifacts (build locally first with ./task prod docker build)
-COPY backend/ /app/backend/
-COPY frontend/dist/ /app/frontend/dist/
-
-# Install backend dependencies only
-RUN cd /app/backend && mise exec uv@latest -- uv sync --frozen
 
 COPY docker/ /
 RUN chmod +x /entrypoint.sh

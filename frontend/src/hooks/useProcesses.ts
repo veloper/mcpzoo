@@ -45,9 +45,7 @@ export function useProcesses() {
 
   const refreshProcesses = async () => {
     try {
-      console.log('🔄 Refreshing processes...')
       const data = await apiClient.getProcessTree()
-      console.log('✅ Got processes data:', data?.length || 0, 'processes')
       setProcesses(data)
       setError(null)
       return data // Return data for timestamp tracking

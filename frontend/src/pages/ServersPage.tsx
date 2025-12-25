@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useServers } from '../hooks/useServers'
 import { apiClient } from '../api/client'
 import { Page } from '@/components/Page'
@@ -20,11 +20,19 @@ import { SyncProgressDialog } from '@/components/SyncProgressDialog'
 
 export function ServersPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { servers, loading, error, deleteServer, fetchServers } = useServers()
   const [syncTaskId, setSyncTaskId] = React.useState<string | null>(null)
   const [isSyncDialogOpen, setIsSyncDialogOpen] = React.useState(false)
   const [syncStarting, setSyncStarting] = React.useState(false)
   const [syncError, setSyncError] = React.useState('')
+
+  // Refresh servers list when navigating to this route
+  React.useEffect(() => {
+    if (location.pathname === '/servers') {
+      fetchServers()
+    }
+  }, [location.pathname])
 
   const handleSync = async () => {
     setSyncStarting(true)
@@ -123,6 +131,7 @@ export function ServersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Transport</TableHead>
                 <TableHead>Port</TableHead>
+                <TableHead>Proxy URL</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -135,6 +144,9 @@ export function ServersPage() {
                     <Badge variant="outline">{server.transport}</Badge>
                   </TableCell>
                   <TableCell>{server.port}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    http://localhost:{server.port}/mcp
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {new Date(server.created_at).toLocaleDateString()}
                   </TableCell>

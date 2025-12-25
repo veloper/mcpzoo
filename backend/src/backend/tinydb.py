@@ -1,6 +1,6 @@
 import asyncio, json, uuid
 
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,21 +18,21 @@ class Database:
         db_path = Path(settings.tinydb_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Check if database file exists and is valid JSON
-        if db_path.exists():
-            try:
-                with open(db_path, 'r') as f:
-                    json.load(f)  # Validate JSON
-            except json.JSONDecodeError as e:
-                # JSON is corrupted, create backup and remove it
-                backup_path = db_path.with_suffix('.json.backup')
-                print(f"Warning: Database file {db_path} has corrupted JSON ({e}), creating backup at {backup_path} and creating new database")
-                db_path.replace(backup_path)
-            except IOError as e:
-                # File is unreadable, create backup and remove it
-                backup_path = db_path.with_suffix('.json.backup')
-                print(f"Warning: Database file {db_path} is unreadable ({e}), creating backup at {backup_path} and creating new database")
-                db_path.replace(backup_path)
+        # # Check if database file exists and is valid JSON
+        # if db_path.exists():
+        #     try:
+        #         with open(db_path, 'r') as f:
+        #             json.load(f)  # Validate JSON
+        #     except json.JSONDecodeError as e:
+        #         # JSON is corrupted, create backup and remove it
+        #         backup_path = db_path.with_suffix('.json.backup')
+        #         print(f"Warning: Database file {db_path} has corrupted JSON ({e}), creating backup at {backup_path} and creating new database")
+        #         db_path.replace(backup_path)
+        #     except IOError as e:
+        #         # File is unreadable, create backup and remove it
+        #         backup_path = db_path.with_suffix('.json.backup')
+        #         print(f"Warning: Database file {db_path} is unreadable ({e}), creating backup at {backup_path} and creating new database")
+        #         db_path.replace(backup_path)
 
         self.db = TinyDB(str(db_path))
         self._ensure_tables()
@@ -81,9 +81,9 @@ class Database:
 db = Database()
 
 
-@asynccontextmanager
-async def get_db():
-    """Async context manager yielding the singleton TinyDB object."""
+@contextmanager
+def get_db():
+    """Context manager yielding the singleton TinyDB object."""
     try:
         yield db.db
     finally:

@@ -1,1 +1,0 @@
-backend: cd /app/backend && uv sync --link-mode=copy && uv run python -m uvicorn src.backend.main:app --host 0.0.0.0 --port 8001 --reload --reload-delay 2 --log-level debug

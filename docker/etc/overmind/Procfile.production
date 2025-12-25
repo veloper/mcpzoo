@@ -1,0 +1,2 @@
+backend: cd /app/backend && mise exec "uv@latest" -- uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 7998 --workers 4 --log-level debug
+nginx: nginx -g 'daemon off;' -c /etc/nginx/nginx.conf
