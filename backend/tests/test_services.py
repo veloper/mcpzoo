@@ -1,16 +1,16 @@
 """Test implementations of services."""
 
-import asyncio
-import uuid
+import asyncio, uuid
+
 from typing import Optional
-from src.backend.models import (
-    Program, SupervisorConf, Process, ProcessState,
-    SupervisorStartProcessResponse, SupervisorStopProcessResponse,
-    SupervisorReadConfigResponse, SupervisorUpdateResponse
-)
+
+from src.backend.process import Process, ProcessState
 from src.backend.services.database import DatabaseService
-from src.backend.services.supervisord import SupervisordService
 from src.backend.services.processes import ProcessesService
+from src.backend.services.supervisord import SupervisordService
+from src.backend.supervisor import (SupervisorConf, SupervisorProgram, SupervisorReadConfigResponse,
+                                    SupervisorStartProcessResponse, SupervisorStopProcessResponse,
+                                    SupervisorUpdateResponse)
 from tinydb import TinyDB
 from tinydb.storages import MemoryStorage
 
@@ -30,7 +30,7 @@ class MockSupervisordService(SupervisordService):
     def __init__(self):
         """Initialize with test data."""
         self.programs = [
-            Program(
+            SupervisorProgram(
                 config=SupervisorConf(name="mcp_test", command="/usr/bin/python"),
                 process=Process(
                     pid=1234,
@@ -42,11 +42,11 @@ class MockSupervisordService(SupervisordService):
             )
         ]
 
-    async def get_all_programs(self) -> list[Program]:
+    async def get_all_programs(self) -> list[SupervisorProgram]:
         """Return all programs."""
         return self.programs
 
-    async def get_program_status(self, name: str) -> Optional[Program]:
+    async def get_program_status(self, name: str) -> Optional[SupervisorProgram]:
         """Get program status by name."""
         for prog in self.programs:
             if prog.name == name:

@@ -17,7 +17,6 @@ interface ProcessTabProps {
   startsecs: number
   startretries: number
   priority: number
-  numprocs: number
   stopsignal: string
   stopwaitsecs: number
   onAutostart: (value: boolean) => void
@@ -25,7 +24,6 @@ interface ProcessTabProps {
   onStartsecs: (value: number) => void
   onStartretries: (value: number) => void
   onPriority: (value: number) => void
-  onNumprocs: (value: number) => void
   onStopsignal: (value: string) => void
   onStopwaitsecs: (value: number) => void
 }
@@ -36,7 +34,6 @@ export function ProcessTab({
   startsecs,
   startretries,
   priority,
-  numprocs,
   stopsignal,
   stopwaitsecs,
   onAutostart,
@@ -44,7 +41,6 @@ export function ProcessTab({
   onStartsecs,
   onStartretries,
   onPriority,
-  onNumprocs,
   onStopsignal,
   onStopwaitsecs,
 }: ProcessTabProps) {
@@ -117,16 +113,7 @@ export function ProcessTab({
             <p className="text-xs text-muted-foreground">Lower = starts first</p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="numprocs">Numprocs</Label>
-            <Input
-              id="numprocs"
-              type="number"
-              value={numprocs}
-              onChange={(e) => onNumprocs(parseInt(e.target.value))}
-              min={1}
-            />
-          </div>
+
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

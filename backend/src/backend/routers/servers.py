@@ -6,12 +6,14 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
-from src.backend.models import (FastMcpServerProxyServerFile, MCPServerConfig, McpServerDirectory, McpServersJsonFile,
-                                MiseTomlFile, SupervisordConfFile, timezone)
+from src.backend.fast_mcp import FastMcpServerProxyServerFile
+from src.backend.mcp import McpServersJsonFile
+from src.backend.models import MiseTomlFile, ServerConfiguration, ServerDirectory, timezone
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisord import SupervisordService, get_supervisord_service
 from src.backend.settings import get_settings
+from src.backend.supervisor import SupervisorConfFile
 from tinydb import Query
 
 
@@ -98,9 +100,9 @@ async def sync_processes(
         for server_data in servers:
             try:
                 # Convert dict to MCPServerConfig
-                server_config = MCPServerConfig(**server_data)
+                server_config = ServerConfiguration(**server_data)
                 # Create McpDirectory object (this generates all files and directory structure)
-                directory = McpServerDirectory.from_server_config(server_config)
+                directory = ServerDirectory.from_server_config(server_config)
                 directories.append(directory)
 
                 # Update synced_at timestamp
@@ -196,7 +198,7 @@ async def create_server(
     server["port"] = get_next_available_mcp_server_port(db_service)
 
     # Validate incoming data using MCPServerConfig model
-    server_config = MCPServerConfig.model_validate(server)
+    server_config = ServerConfiguration.model_validate(server)
     
     server_dict = server_config.model_dump()
 
@@ -227,7 +229,7 @@ async def update_server(
             )
 
         # Validate incoming data using MCPServerConfig model
-        server_config = MCPServerConfig.model_validate(server)
+        server_config = ServerConfiguration.model_validate(server)
         server_dict = server_config.model_dump()
         logger.info(f"Validated server config: {server_dict}")
         server_dict["id"] = server_id
@@ -425,13 +427,13 @@ async def parse_server_config(
             }
 
             # Validate using MCPServerConfig model
-            server_config_obj = MCPServerConfig.model_validate(mcpserver_config)
+            server_config_obj = ServerConfiguration.model_validate(mcpserver_config)
             return server_config_obj.model_dump()
 
         else:
             # Assume it's already MCPServerConfig format
             # Validate using MCPServerConfig model
-            server_config = MCPServerConfig.model_validate(config_data)
+            server_config = ServerConfiguration.model_validate(config_data)
             return server_config.model_dump()
 
     except HTTPException:
@@ -473,10 +475,10 @@ async def get_server_files(
 
 
         # Convert dict to MCPServerConfig
-        server_config = MCPServerConfig(**config_data)
+        server_config = ServerConfiguration(**config_data)
 
         # Directory 
-        directory = McpServerDirectory.from_server_config(server_config)
+        directory = ServerDirectory.from_server_config(server_config)
 
 
         # Create file generators

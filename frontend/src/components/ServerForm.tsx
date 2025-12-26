@@ -10,35 +10,11 @@ import { ToolsTab } from './form/ToolsTab'
 import { TasksTab } from './form/TasksTab'
 import { LoggingTab } from './form/LoggingTab'
 import { FilesTab } from './form/FilesTab'
-import { EnvironmentTab } from './form/EnvironmentTab'
+
 import { McpServerImport } from './McpServerImport'
 import { toast } from 'sonner'
 
-interface SupervisorConf {
-  name: string
-  group: string
-  command: string
-  directory?: string
-  umask: string
-  user: string
-  autostart?: boolean
-  autorestart?: string
-  startsecs?: number
-  startretries?: number
-  priority?: number
-  stopsignal?: string
-  stopwaitsecs?: number
-  stdout_logfile?: string
-  stdout_logfile_maxbytes?: number
-  stdout_logfile_backups?: number
-  stderr_logfile?: string
-  stderr_logfile_maxbytes?: number
-  stderr_logfile_backups?: number
-  redirect_stderr?: boolean
-  environment?: Record<string, string>
-  numprocs?: number
-  process_name?: string
-}
+
 
 interface MiseTool {
   name: string
@@ -52,15 +28,30 @@ interface MCPServerConfig {
   url?: string
   command?: string
   arguments?: string[]
-  port: number
-  supervisor_conf: SupervisorConf
+  port?: number
+  // Flat fields from ServerConfiguration model
+  autostart?: boolean
+  autorestart?: string
+  priority?: number
+  startsecs?: number
+  startretries?: number
+  stopsignal?: string
+  stopwaitsecs?: number
+  stdout_logfile?: string
+  stdout_logfile_maxbytes?: number
+  stdout_logfile_backups?: number
+  stderr_logfile?: string
+  stderr_logfile_maxbytes?: number
+  stderr_logfile_backups?: number
+  redirect_stderr?: boolean
   tools?: MiseTool[]
   task_install?: string
   task_uninstall?: string
-  task_run?: string
   envs?: Record<string, string>
+  log_level?: string
   created_at?: string
   updated_at?: string
+  synced_at?: string
 }
 
 interface ServerFormProps {
@@ -70,7 +61,6 @@ interface ServerFormProps {
 }
 
 export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) {
-  // Test HMR - change this comment once more to trigger hot reload - final test - last attempt - final - last - final - last - final - final - final
   const [name, setName] = useState('')
   const [nameError, setNameError] = useState('')
   const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio')
@@ -92,7 +82,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [stderrLogfile, setStderrLogfile] = useState('')
   const [stderrLogfileMaxbytes, setStderrLogfileMaxbytes] = useState(50_000_000)
   const [stderrLogfileBackups, setStderrLogfileBackups] = useState(10)
-  const [numprocs, setNumprocs] = useState(1)
+
   const [taskInstall, setTaskInstall] = useState('')
   const [taskUninstall, setTaskUninstall] = useState('')
   const [envVars, setEnvVars] = useState<Record<string, string>>({})
@@ -136,7 +126,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
       stderrLogfile,
       stderrLogfileMaxbytes,
       stderrLogfileBackups,
-      numprocs,
+
       taskInstall: taskInstall.trim(),
       taskUninstall: taskUninstall.trim(),
       envVars,
@@ -167,30 +157,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
       stderrLogfilePath = `${logFileBase}_err.log`
     }
 
-    const supervisorConf = {
-      name,
-      group: 'mcp_servers',
-      command: transport === 'stdio' ? command : '',
-      directory: name ? `/app/servers/${name}` : undefined,
-      umask: '022',
-      user: 'root',
-      autostart,
-      autorestart,
-      startsecs: parseInt(startsecs.toString()),
-      startretries: parseInt(startretries.toString()),
-      priority: parseInt(priority.toString()),
-      stopsignal,
-      stopwaitsecs: parseInt(stopwaitsecs.toString()),
-      stdout_logfile: stdoutLogfilePath,
-      stdout_logfile_maxbytes: stdoutLogfileMaxbytes,
-      stdout_logfile_backups: stdoutLogfileBackups,
-      stderr_logfile: stderrLogfilePath,
-      stderr_logfile_maxbytes: stderrLogfileMaxbytes,
-      stderr_logfile_backups: stderrLogfileBackups,
-      redirect_stderr: redirectStderr,
-      environment: Object.keys(envVars).length > 0 ? envVars : {},
-      numprocs: parseInt(numprocs.toString()),
-    }
+
 
     const config = {
       id: editingId || undefined,
@@ -200,7 +167,21 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
       command: transport === 'stdio' ? command.trim() : undefined,
       url: transport !== 'stdio' ? url.trim() : undefined,
       arguments: args.length > 0 ? args : undefined,
-      supervisor_conf: supervisorConf,
+      // Flat fields from ServerConfiguration model
+      autostart,
+      autorestart,
+      priority: parseInt(priority.toString()),
+      startsecs: parseInt(startsecs.toString()),
+      startretries: parseInt(startretries.toString()),
+      stopsignal,
+      stopwaitsecs: parseInt(stopwaitsecs.toString()),
+      stdout_logfile: stdoutLogfilePath,
+      stdout_logfile_maxbytes: stdoutLogfileMaxbytes,
+      stdout_logfile_backups: stdoutLogfileBackups,
+      stderr_logfile: stderrLogfilePath,
+      stderr_logfile_maxbytes: stderrLogfileMaxbytes,
+      stderr_logfile_backups: stderrLogfileBackups,
+      redirect_stderr: redirectStderr,
       tools: tools && tools.length > 0 ? tools : [],
       task_install: taskInstall.trim() || undefined,
       task_uninstall: taskUninstall.trim() || undefined,
@@ -236,7 +217,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
 
     const currentHash = hashFormState()
     return currentHash !== initialFormHash
-  }, [editingId, initialFormHash, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, numprocs, taskInstall, taskUninstall, envVars, tools, logLevel])
+  }, [editingId, initialFormHash, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, taskInstall, taskUninstall, envVars, tools, logLevel])
 
   useEffect(() => {
     if (editingId) {
@@ -260,28 +241,22 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
           setPort(server.port || null)
           setArgs(Array.isArray(server.arguments) ? server.arguments : [])
 
-          // Load supervisor config
+          // Load supervisor config (now flat fields)
           console.log('Loading supervisor config...')
-          if (server.supervisor_conf) {
-            setAutostart(server.supervisor_conf.autostart ?? true)
-            setAutorestart(server.supervisor_conf.autorestart || 'unexpected')
-            setStartsecs(server.supervisor_conf.startsecs || 1)
-            setStartretries(server.supervisor_conf.startretries || 3)
-            setPriority(server.supervisor_conf.priority || 999)
-            setStopsignal(server.supervisor_conf.stopsignal || 'TERM')
-            setStopwaitsecs(server.supervisor_conf.stopwaitsecs || 10)
-            setRedirectStderr(server.supervisor_conf.redirect_stderr ?? false)
-            setStdoutLogfile(server.supervisor_conf.stdout_logfile || '')
-            setStdoutLogfileMaxbytes(server.supervisor_conf.stdout_logfile_maxbytes || 50_000_000)
-            setStdoutLogfileBackups(server.supervisor_conf.stdout_logfile_backups || 10)
-            setStderrLogfile(server.supervisor_conf.stderr_logfile || '')
-            setStderrLogfileMaxbytes(server.supervisor_conf.stderr_logfile_maxbytes || 50_000_000)
-            setStderrLogfileBackups(server.supervisor_conf.stderr_logfile_backups || 10)
-            setNumprocs(server.supervisor_conf.numprocs || 1)
-            if (server.supervisor_conf.environment && typeof server.supervisor_conf.environment === 'object') {
-              setEnvVars(server.supervisor_conf.environment)
-            }
-          }
+          setAutostart(server.autostart ?? true)
+          setAutorestart(server.autorestart || 'unexpected')
+          setStartsecs(server.startsecs || 1)
+          setStartretries(server.startretries || 3)
+          setPriority(server.priority || 999)
+          setStopsignal(server.stopsignal || 'TERM')
+          setStopwaitsecs(server.stopwaitsecs || 10)
+          setRedirectStderr(server.redirect_stderr ?? false)
+          setStdoutLogfile(server.stdout_logfile || '')
+          setStdoutLogfileMaxbytes(server.stdout_logfile_maxbytes || 50_000_000)
+          setStdoutLogfileBackups(server.stdout_logfile_backups || 10)
+          setStderrLogfile(server.stderr_logfile || '')
+          setStderrLogfileMaxbytes(server.stderr_logfile_maxbytes || 50_000_000)
+          setStderrLogfileBackups(server.stderr_logfile_backups || 10)
 
           // Load tools
           console.log('Loading tools...')
@@ -331,7 +306,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
       // Only set initial hash when we have loaded data and name is set
       setInitialFormHash(hashFormState())
     }
-  }, [editingId, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, numprocs, taskInstall, taskUninstall, envVars, tools, logLevel, initialFormHash])
+  }, [editingId, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, taskInstall, taskUninstall, envVars, tools, logLevel, initialFormHash])
 
   const handleNameChange = (value: string) => {
     setName(value)
@@ -519,7 +494,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
         setStderrLogfile(config.supervisor_conf.stderr_logfile || '')
         setStderrLogfileMaxbytes(config.supervisor_conf.stderr_logfile_maxbytes || 50_000_000)
         setStderrLogfileBackups(config.supervisor_conf.stderr_logfile_backups || 10)
-        setNumprocs(config.supervisor_conf.numprocs || 1)
+
         if (config.supervisor_conf.environment && typeof config.supervisor_conf.environment === 'object') {
           setEnvVars(config.supervisor_conf.environment)
         }
@@ -679,7 +654,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 startsecs={startsecs}
                 startretries={startretries}
                 priority={priority}
-                numprocs={numprocs}
+
                 stopsignal={stopsignal}
                 stopwaitsecs={stopwaitsecs}
                 onAutostart={setAutostart}
@@ -687,7 +662,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                 onStartsecs={setStartsecs}
                 onStartretries={setStartretries}
                 onPriority={setPriority}
-                onNumprocs={setNumprocs}
+
                 onStopsignal={setStopsignal}
                 onStopwaitsecs={setStopwaitsecs}
               />

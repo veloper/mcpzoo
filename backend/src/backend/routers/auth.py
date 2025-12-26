@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from src.backend.models import LoginRequest, LoginResponse
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import authenticate_user, create_access_token, verify_token
+from src.backend.request_response_models import LoginRequest, LoginResponse
+
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

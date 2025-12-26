@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
-from src.backend.models import Process, ProcessTree
+from src.backend.process import Process, ProcessTree
 
 
 router = APIRouter(prefix="/api/processes", tags=["processes"])

@@ -1,8 +1,9 @@
 """Processes service for managing system processes."""
-import os
-import signal
-from typing import List, Optional, Callable
-from src.backend.models import Process, ProcessState
+import os, signal
+
+from typing import Callable, List, Optional
+
+from src.backend.process import Process, ProcessState
 
 
 class ProcessesService:

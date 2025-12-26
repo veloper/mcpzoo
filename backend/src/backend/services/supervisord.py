@@ -3,10 +3,12 @@ import http.client, socket, xmlrpc.client
 
 from typing import Any, Dict, List, Optional
 
-from src.backend.models import (Process, ProcessState, Program, SupervisorConf, SupervisorGetAllProcessInfoResponse,
-                                SupervisorGetPIDResponse, SupervisorGetProcessInfoResponse, SupervisorGetStateResponse,
-                                SupervisorProcessInfoData, SupervisorReadConfigResponse, SupervisorStartProcessResponse,
-                                SupervisorStopProcessResponse, SupervisorUpdateResponse)
+from src.backend.process import Process, ProcessState
+from src.backend.supervisor import (SupervisorConf, SupervisorGetAllProcessInfoResponse, SupervisorGetPIDResponse,
+                                    SupervisorGetProcessInfoResponse, SupervisorGetStateResponse,
+                                    SupervisorProcessInfoData, SupervisorProgram, SupervisorReadConfigResponse,
+                                    SupervisorStartProcessResponse, SupervisorStopProcessResponse,
+                                    SupervisorUpdateResponse)
 
 
 try:
@@ -41,7 +43,7 @@ class SupervisordService:
         self.transport = UnixTransport(socket_path)
         self.proxy = xmlrpc.client.ServerProxy('http://localhost', transport=self.transport)
     
-    async def get_all_programs(self) -> List[Program]:
+    async def get_all_programs(self) -> List[SupervisorProgram]:
         """Get all supervisor programs as typed Program models, excluding web group processes."""
         try:
             info_response = self.get_all_process_info()
@@ -69,7 +71,7 @@ class SupervisordService:
                 )
 
                 # Create Program combining config and process
-                program = Program(
+                program = SupervisorProgram(
                     config=config,
                     process=process
                 )
@@ -90,7 +92,7 @@ class SupervisordService:
         }
         return state_map.get(state_code, ProcessState.UNKNOWN)
     
-    async def get_program_status(self, name: str) -> Optional[Program]:
+    async def get_program_status(self, name: str) -> Optional[SupervisorProgram]:
         """Get status of a specific program with its process."""
         try:
             all_programs = await self.get_all_programs()

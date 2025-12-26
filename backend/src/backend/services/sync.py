@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from src.backend.models import MCPServerConfig, McpServerDirectory, SyncTask, SyncTaskStatus
+from src.backend.enums import SyncTaskStatus
+from src.backend.models import ServerConfiguration, ServerDirectory, SyncTask
 from src.backend.services.database import database_service
 from src.backend.services.logging import logger
 from src.backend.settings import get_settings
@@ -126,8 +127,8 @@ class SyncService:
             
             for idx, server_data in enumerate(servers):
                 try:
-                    server_config = MCPServerConfig(**server_data)
-                    directory = McpServerDirectory.from_server_config(server_config)
+                    server_config = ServerConfiguration(**server_data)
+                    directory = ServerDirectory.from_server_config(server_config)
                     directories.append(directory)
                     
                     # Update synced_at timestamp

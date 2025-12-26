@@ -5,9 +5,23 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from src.backend.models import TokenData
+from pydantic import BaseModel
 from src.backend.settings import get_settings
 
+
+class TokenData(BaseModel):
+    """JWT token data."""
+    sub: str | None = None
+    exp: int | None = None
+
+    def sub_or_fail(self) -> str:
+        """Return subject or raise error if missing."""
+        if self.sub is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing subject",
+            )
+        return self.sub
 
 settings = get_settings()
 
@@ -62,19 +76,15 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
         )
-        username: str = payload.get("sub")
+        
+        username: str | None = payload.get("sub")
         if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-            )
+            raise HTTPException( status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token", )
         token_data = TokenData(sub=username)
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
-    return token_data.sub
+        raise HTTPException( status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token", )
+        
+    return token_data.sub_or_fail()
 
 
 def authenticate_user(username: str, password: str) -> bool:

@@ -1,8 +1,11 @@
+import traceback
+
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from src.backend.auth import verify_token
 from src.backend.routers import auth, processes, programs, servers, sync, tools
@@ -10,7 +13,23 @@ from src.backend.services.logging import logger
 from src.backend.settings import get_settings
 
 
-app = FastAPI(title="MCPZoo", version="0.1.0")
+app = FastAPI(title="MCPZoo", version="0.1.0", debug=True)
+
+# Custom exception handler for detailed error logging
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Log full stack traces for all exceptions."""
+    logger.error(f"Unhandled exception in {request.method} {request.url}: {exc}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "traceback": traceback.format_exc(),
+            "path": str(request.url),
+            "method": request.method
+        }
+    )
 
 # CORS middleware - Allow frontend to communicate
 app.add_middleware(
