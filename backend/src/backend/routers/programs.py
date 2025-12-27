@@ -61,10 +61,7 @@ async def get_process_logs(
     db_service: DatabaseService = Depends(get_database_service),
 ):
     """Get process logs from actual log files as structured records."""
-    # Extract server name from process name (remove 'mcp_' prefix if present)
     server_name = name
-    if name.startswith('mcp_'):
-        server_name = name[4:]  # Remove 'mcp_' prefix
 
     # Look up server config by name
     with db_service as db:

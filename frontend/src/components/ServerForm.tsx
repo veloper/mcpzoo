@@ -734,22 +734,21 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">Program Name</label>
-                      <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
-                        {name ? `mcp_${name}` : 'mcp_{name}'}
-                      </div>
-                    </div>
-                    <div>
                       <label className="text-xs text-muted-foreground">Port</label>
                       <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
                         {port !== null ? port.toString() : 'auto-assigned'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Proxy URL</label>
+                      <div className="text-sm font-mono bg-background rounded px-2 py-1 mt-1">
+                        {port !== null ? `http://localhost:${port}` : 'http://localhost:{port}'}
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-
 
           </form>
       </div>
