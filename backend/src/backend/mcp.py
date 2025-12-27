@@ -9,7 +9,7 @@ from src.backend.enums import MCPServerTransport
 
 
 if TYPE_CHECKING:
-    from src.backend.models import ServerConfiguration
+    from src.backend.models import Server
 
 
 class McpServersJsonFile(BaseModel):
@@ -18,7 +18,7 @@ class McpServersJsonFile(BaseModel):
     servers_dict: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Compiled mcpServers configuration dictionary")
 
     @classmethod
-    def from_mcp_server_configs(cls, configs: List[ServerConfiguration]) -> "McpServersJsonFile":
+    def from_mcp_server_configs(cls, configs: List[Server]) -> "McpServersJsonFile":
         """Create McpServersJsonFile from list of MCPServerConfigs, extracting and transforming relevant fields."""
         servers_dict = {}
         for config in configs:
@@ -37,7 +37,10 @@ class McpServersJsonFile(BaseModel):
 
             # Environment variables
             if config.envs:
-                servers_dict[config.name]["env"] = dict(config.envs)
+                if "env" not in servers_dict[config.name]:
+                        servers_dict[config.name]["env"] = {}
+                for key, value in config.envs.items():
+                    servers_dict[config.name]["env"][key] = value
 
         return cls(servers_dict=servers_dict)
 

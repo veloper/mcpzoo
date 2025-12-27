@@ -15,7 +15,7 @@ from src.backend.settings import get_settings
 
 
 if TYPE_CHECKING:
-    from src.backend.models import ServerConfiguration
+    from src.backend.models import Server
 
 
 
@@ -84,7 +84,7 @@ class MiseTomlFile(BaseModel):
         return key in self.envs
 
     @classmethod
-    def from_mcp_server_config(cls, config: ServerConfiguration) -> "MiseTomlFile":
+    def from_mcp_server_config(cls, config: Server) -> "MiseTomlFile":
         """Create MiseTomlFile from MCPServerConfig, extracting and transforming relevant fields."""
         tasks = {}
         if config.task_install:

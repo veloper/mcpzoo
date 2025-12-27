@@ -4,12 +4,11 @@ from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
-from src.backend.models import ServerConfiguration
+from src.backend.models import Server
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.supervisord import get_supervisord_service
 from src.backend.supervisor import SupervisorProgram
 from src.backend.utils.shell import run_command
-from tinydb import Query
 
 
 router = APIRouter(prefix="/api/programs", tags=["programs"])
@@ -65,8 +64,8 @@ async def get_process_logs(
 
     # Look up server config by name
     with db_service as db:
-        servers_table = db.table('servers')
-        server_data = servers_table.get(Query().name == server_name)
+        all_servers = db.get_all_servers()
+        server_data = next((s for s in all_servers if s.get('name') == server_name), None)
 
     if not server_data:
         raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")
@@ -80,7 +79,7 @@ async def get_process_logs(
                 server_data[key] = value
 
     # Convert to ServerConfiguration to access supervisor config
-    server_config = ServerConfiguration(**server_data)
+    server_config = Server(**server_data)
     supervisor_conf = server_config.supervisor_conf
 
     # Get log file paths from supervisor config

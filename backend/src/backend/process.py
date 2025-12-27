@@ -1,8 +1,10 @@
 import re
-from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict, model_serializer
-from typing import Optional, List, Dict, Any
+
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 
 class ProcessState(str, Enum):
@@ -157,7 +159,7 @@ class ProcessTree(BaseModel):
         from datetime import datetime
 
         result = subprocess.run([
-            "ps", "axo", 
+            "ps", "-axo",
             "pid,ppid,user,pcpu,pmem,rss,etime,lstart,state,nice,nlwp,comm,args"
         ], capture_output=True, text=True, check=True)
         

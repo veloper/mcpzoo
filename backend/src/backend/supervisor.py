@@ -9,7 +9,7 @@ from src.backend.process import Process
 
 
 if TYPE_CHECKING:
-    from src.backend.models import ServerConfiguration
+    from src.backend.models import Server
 
 
 class SupervisorProcessInfo(BaseModel):
@@ -213,7 +213,7 @@ class SupervisorConfFile(BaseModel):
     supervisor_conf: SupervisorConf = Field(description="Supervisord [program:*] configuration")
 
     @classmethod
-    def from_mcp_server_config(cls, config: ServerConfiguration) -> "SupervisorConfFile":
+    def from_mcp_server_config(cls, config: Server) -> "SupervisorConfFile":
         """Create SupervisordConfFile from MCPServerConfig, extracting relevant fields."""
         return cls(supervisor_conf=config.supervisor_conf)
 

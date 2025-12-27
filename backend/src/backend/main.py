@@ -67,11 +67,12 @@ async def home(username: Optional[str] = None):
     """
     logger.info("Home endpoint called")
     try:
+        from src.backend.services.database import database_service
         from src.backend.services.supervisord import supervisord_service
-        from src.backend.tinydb import db
 
         logger.debug("Getting servers from database...")
-        servers_list = db.get_all_servers()
+        with database_service as db:
+            servers_list = db.get_all_servers()
         logger.debug(f"Found {len(servers_list)} servers")
 
         logger.debug("Getting programs from supervisord...")

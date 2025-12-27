@@ -8,13 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
 from src.backend.fast_mcp import FastMcpServerProxyServerFile
 from src.backend.mcp import McpServersJsonFile
-from src.backend.models import MiseTomlFile, ServerConfiguration, ServerDirectory, timezone
+from src.backend.models import MiseTomlFile, Server, ServerDirectory, timezone
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisord import SupervisordService, get_supervisord_service
 from src.backend.settings import get_settings
 from src.backend.supervisor import SupervisorConfFile
-from tinydb import Query
 
 
 settings = get_settings()
@@ -31,8 +30,7 @@ def get_next_available_mcp_server_port(db_service: DatabaseService) -> int:
 
     # Get all existing servers to check assigned ports
     with db_service as db:
-        servers_table = db.table('servers')
-        existing_servers = servers_table.all()
+        existing_servers = db.get_all_servers()
 
     # Collect ports already assigned to servers
     assigned_ports = set()
@@ -63,8 +61,7 @@ async def list_servers(
     logger.info(f"list_servers called by user: {username}")
     try:
         with db_service as db:
-            servers_table = db.table('servers')
-            servers = servers_table.all()
+            servers = db.get_all_servers()
             logger.info(f"Found {len(servers)} servers")
             return servers
     except Exception as e:
@@ -91,8 +88,7 @@ async def sync_processes(
     """
     try:
         with db_service as db:
-            servers_table = db.table('servers')
-            servers = servers_table.all()
+            servers = db.get_all_servers()
 
         # Load McpDirectory objects for each server (this creates/updates directory structures and files)
         directories = []
@@ -100,13 +96,13 @@ async def sync_processes(
         for server_data in servers:
             try:
                 # Convert dict to MCPServerConfig
-                server_config = ServerConfiguration(**server_data)
+                server_config = Server(**server_data)
                 # Create McpDirectory object (this generates all files and directory structure)
                 directory = ServerDirectory.from_server_config(server_config)
                 directories.append(directory)
 
                 # Update synced_at timestamp
-                server_data["synced_at"] = datetime.now(timezone.utc).isoformat()
+                server_data["synced_at"] = datetime.now(timezone.utc)
                 synced_servers.append(server_data)
 
                 logger.info(f"Loaded McpDirectory for server: {server_config.name} (ID: {server_config.id})")
@@ -116,8 +112,7 @@ async def sync_processes(
 
         # Update synced_at timestamps in database
         for server_data in synced_servers:
-            Server = Query()
-            servers_table.update({"synced_at": server_data["synced_at"]}, Server.id == server_data["id"])
+            db.update_server(server_data["id"], {"synced_at": server_data["synced_at"]})
 
         # for each directory, clear it, then write all files
         for directory in directories:
@@ -165,9 +160,7 @@ async def get_server(
     logger.info(f"get_server called by user: {username} for server_id: {server_id}")
     try:
         with db_service as db:
-            servers_table = db.table('servers')
-            Server = Query()
-            server = servers_table.get(Server.id == server_id)
+            server = db.get_server(server_id)
 
         if not server:
             logger.warning(f"Server not found: {server_id}")
@@ -198,13 +191,12 @@ async def create_server(
     server["port"] = get_next_available_mcp_server_port(db_service)
 
     # Validate incoming data using MCPServerConfig model
-    server_config = ServerConfiguration.model_validate(server)
+    server_config = Server.model_validate(server)
     
     server_dict = server_config.model_dump()
 
     with db_service as db:
-        servers_table = db.table('servers')
-        servers_table.insert(server_dict)
+        db.insert_server(server_dict)
         
     return {"id": server_id, **server_dict}
 
@@ -219,9 +211,7 @@ async def update_server(
 ):
     """Update server configuration."""
     with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        existing_server = servers_table.get(Server.id == server_id)
+        existing_server = db.get_server(server_id)
         if not existing_server:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -229,22 +219,22 @@ async def update_server(
             )
 
         # Validate incoming data using MCPServerConfig model
-        server_config = ServerConfiguration.model_validate(server)
+        server_config = Server.model_validate(server)
         server_dict = server_config.model_dump()
         logger.info(f"Validated server config: {server_dict}")
         server_dict["id"] = server_id
-        server_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+        server_dict["updated_at"] = datetime.now(timezone.utc)
 
         # Always assign port for all transports (ignore any port in request)
         transport = server_dict.get("transport")
         if transport:
             logger.info("Auto-assigning port for update")
             # Get all existing servers to check assigned ports
-            existing_servers = servers_table.all()
+            all_servers = db.get_all_servers()
 
             # Collect ports already assigned to other servers (exclude current server)
             assigned_ports = set()
-            for srv in existing_servers:
+            for srv in all_servers:
                 if srv.get("id") != server_id and srv.get("port"):
                     assigned_ports.add(srv["port"])
 
@@ -263,7 +253,7 @@ async def update_server(
                     detail="No available ports in range 8100-8199",
                 )
 
-        servers_table.update(server_dict, Server.id == server_id)
+        db.update_server(server_id, server_dict)
     return {"id": server_id, **server_dict}
 
 
@@ -280,9 +270,7 @@ async def get_server_logs(
     Returns last 100 lines of the requested logfile.
     """
     with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        server = servers_table.get(Server.id == server_id)
+        server = db.get_server(server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
@@ -311,14 +299,13 @@ async def delete_server(
 ):
     """Delete server configuration."""
     with db_service as db:
-        servers_table = db.table('servers')
-        Server = Query()
-        if not servers_table.get(Server.id == server_id):
+        server = db.get_server(server_id)
+        if not server:
             raise HTTPException(
                 status_code=404,
                 detail="Server not found",
             )
-        servers_table.remove(Server.id == server_id)
+        db.delete_server(server_id)
     return None
 
 @router.get("/mcp-config", response_model=dict)
@@ -328,8 +315,7 @@ async def get_mcp_config(
 ):
     """Generate mcpServer.json configuration for FastMCP proxy server."""
     with db_service as db:
-        servers_table = db.table('servers')
-        servers = servers_table.all()
+        servers = db.get_all_servers()
 
     mcp_servers = {}
 
@@ -427,13 +413,13 @@ async def parse_server_config(
             }
 
             # Validate using MCPServerConfig model
-            server_config_obj = ServerConfiguration.model_validate(mcpserver_config)
+            server_config_obj = Server.model_validate(mcpserver_config)
             return server_config_obj.model_dump()
 
         else:
             # Assume it's already MCPServerConfig format
             # Validate using MCPServerConfig model
-            server_config = ServerConfiguration.model_validate(config_data)
+            server_config = Server.model_validate(config_data)
             return server_config.model_dump()
 
     except HTTPException:
@@ -458,9 +444,7 @@ async def get_server_files(
         else:
             logger.info(f"Fetching server config from database for server: {server_id}")
             with db_service as db:
-                servers_table = db.table('servers')
-                Server = Query()
-                server_data = servers_table.get(Server.id == server_id)
+                server_data = db.get_server(server_id)
 
             if not server_data:
                 logger.warning(f"Server not found: {server_id}")
@@ -475,7 +459,7 @@ async def get_server_files(
 
 
         # Convert dict to MCPServerConfig
-        server_config = ServerConfiguration(**config_data)
+        server_config = Server(**config_data)
 
         # Directory 
         directory = ServerDirectory.from_server_config(server_config)

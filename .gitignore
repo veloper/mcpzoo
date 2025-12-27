@@ -39,5 +39,8 @@ logs/
 # Data
 data/
 
+# MCP
+.mcp.json
+
 # Docker data
 docker/data/tinydb.json

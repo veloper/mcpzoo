@@ -34,32 +34,43 @@ class Settings(BaseSettings):
     
     # Database
     tinydb_path: str = "/app/data/tinydb.json"
-    
+    sqlite_path: str = "/app/data/mcpzoo.db"
+
     # MCP
     mcp_server_path: str = "/app/servers"
-    
+
     # Logging
     log_level: str = "INFO"
-    
+
     def __init__(self, **data):
         # Determine the correct .env file path before initialization
         env = get_env()
         env_file = f".env.{env}"
         project_root = Path(__file__).parent.parent.parent.parent
-        
+
         # Check if environment-specific file exists
         if (project_root / env_file).exists():
             self.model_config['env_file'] = str(project_root / env_file)
         else:
             # Fallback to default .env
             self.model_config['env_file'] = str(project_root / ".env")
-        
+
         super().__init__(**data)
-        
+
         # Set app_env to current environment
         if not self.app_env:
             self.app_env = get_env()
-        
+
+        # Override database paths for development and test
+        if self.app_env in ["dev", "test"]:
+            data_dir = project_root / "data"
+            self.tinydb_path = str(data_dir / "tinydb.json")
+            self.sqlite_path = str(data_dir / "mcpzoo.db")
+
+        # Override MCP server path for development and test
+        if self.app_env in ["dev", "test"]:
+            self.mcp_server_path = str(project_root / "data" / "servers")
+
         if not self.app_username or not self.app_password:
             raise ValueError("APP_USERNAME and APP_PASSWORD are required")
 

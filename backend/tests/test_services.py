@@ -1,131 +1,80 @@
 """Test implementations of services."""
 
-import asyncio, uuid
+import uuid
 
-from typing import Optional
-
-from src.backend.process import Process, ProcessState
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel
 from src.backend.services.database import DatabaseService
-from src.backend.services.processes import ProcessesService
-from src.backend.services.supervisord import SupervisordService
-from src.backend.supervisor import (SupervisorConf, SupervisorProgram, SupervisorReadConfigResponse,
-                                    SupervisorStartProcessResponse, SupervisorStopProcessResponse,
-                                    SupervisorUpdateResponse)
-from tinydb import TinyDB
-from tinydb.storages import MemoryStorage
 
 
 class InMemoryDatabaseService(DatabaseService):
     """In-memory database service for testing."""
 
     def __init__(self):
-        """Initialize with in-memory TinyDB."""
-        super().__init__(TinyDB(storage=MemoryStorage))
+        """Initialize with in-memory SQLite."""
+        # Create in-memory SQLite database
+        engine = create_engine("sqlite:///:memory:", echo=False)
+        SQLModel.metadata.create_all(engine)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+        # Create a mock database instance that uses the in-memory session
+        class InMemoryDatabase:
+            def __init__(self, session_factory):
+                self.SessionLocal = session_factory
+                self.servers = {}
+                self.sync_tasks = {}
+
+            def get_session(self):
+                return self.SessionLocal()
+
+            def insert_server(self, server_data):
+                server_id = server_data.get("id", str(uuid.uuid4()))
+                self.servers[server_id] = server_data.copy()
+                return server_id
+
+            def get_server(self, server_id):
+                return self.servers.get(server_id)
+
+            def get_all_servers(self):
+                return list(self.servers.values())
+
+            def update_server(self, server_id, data):
+                if server_id in self.servers:
+                    self.servers[server_id].update(data)
+                    return True
+                return False
+
+            def delete_server(self, server_id):
+                if server_id in self.servers:
+                    del self.servers[server_id]
+                    return True
+                return False
+
+            def insert_sync_task(self, task_data):
+                task_id = task_data.get("id", str(uuid.uuid4()))
+                self.sync_tasks[task_id] = task_data.copy()
+                return task_id
+
+            def get_sync_task(self, task_id):
+                return self.sync_tasks.get(task_id)
+
+            def get_all_sync_tasks(self):
+                return list(self.sync_tasks.values())
+
+            def update_sync_task(self, task_id, data):
+                if task_id in self.sync_tasks:
+                    self.sync_tasks[task_id].update(data)
+                    return True
+                return False
+
+            def delete_sync_task(self, task_id):
+                if task_id in self.sync_tasks:
+                    del self.sync_tasks[task_id]
+                    return True
+                return False
+
+        super().__init__(InMemoryDatabase(SessionLocal))
         self._id_counter = 0
 
 
-class MockSupervisordService(SupervisordService):
-    """Mock supervisord service for testing."""
-
-    def __init__(self):
-        """Initialize with test data."""
-        self.programs = [
-            SupervisorProgram(
-                config=SupervisorConf(name="mcp_test", command="/usr/bin/python"),
-                process=Process(
-                    pid=1234,
-                    name="mcp_test",
-                    state=ProcessState.RUNNING,
-                    uptime=3600,
-                    manager="supervisor"
-                )
-            )
-        ]
-
-    async def get_all_programs(self) -> list[SupervisorProgram]:
-        """Return all programs."""
-        return self.programs
-
-    async def get_program_status(self, name: str) -> Optional[SupervisorProgram]:
-        """Get program status by name."""
-        for prog in self.programs:
-            if prog.name == name:
-                return prog
-        return None
-
-    async def start_program(self, name: str) -> SupervisorStartProcessResponse:
-        """Start a program."""
-        for prog in self.programs:
-            if prog.name == name and prog.process:
-                prog.process.state = ProcessState.RUNNING
-                return SupervisorStartProcessResponse(success=True)
-        return SupervisorStartProcessResponse(success=False)
-
-    async def stop_program(self, name: str) -> SupervisorStopProcessResponse:
-        """Stop a program."""
-        for prog in self.programs:
-            if prog.name == name and prog.process:
-                prog.process.state = ProcessState.STOPPED
-                return SupervisorStopProcessResponse(success=True)
-        return SupervisorStopProcessResponse(success=False)
-
-    async def restart_program(self, name: str) -> bool:
-        """Restart a program."""
-        await self.stop_program(name)
-        return (await self.start_program(name)).success
-
-    async def reread_config(self) -> SupervisorReadConfigResponse:
-        """Reread configuration."""
-        return SupervisorReadConfigResponse(added_processes=[], removed_processes=[])
-
-    async def update(self) -> SupervisorUpdateResponse:
-        """Update supervisord."""
-        return SupervisorUpdateResponse(added_processes=[], removed_processes=[])
-
-
-class MockProcessesService(ProcessesService):
-    """Mock processes service for testing."""
-
-    async def get_by_pid(self, pid: int) -> Optional[Process]:
-        """Get process by PID."""
-        return None
-
-    async def get_by_name(self, name: str) -> Optional[Process]:
-        """Get process by name."""
-        return None
-
-    async def list_all(self) -> list[Process]:
-        """List all processes."""
-        return []
-
-    async def refresh(self, process: Process) -> None:
-        """Refresh process data."""
-        pass
-
-    async def send_term(self, process: Process) -> bool:
-        """Send SIGTERM."""
-        return True
-
-    async def send_kill(self, process: Process) -> bool:
-        """Send SIGKILL."""
-        return True
-
-    async def send_stop(self, process: Process) -> bool:
-        """Send SIGSTOP."""
-        return True
-
-    async def send_cont(self, process: Process) -> bool:
-        """Send SIGCONT."""
-        return True
-
-    async def send_hup(self, process: Process) -> bool:
-        """Send SIGHUP."""
-        return True
-
-    async def send_usr1(self, process: Process) -> bool:
-        """Send SIGUSR1."""
-        return True
-
-    async def send_usr2(self, process: Process) -> bool:
-        """Send SIGUSR2."""
-        return True

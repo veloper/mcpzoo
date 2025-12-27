@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Optional
 
 from src.backend.enums import SyncTaskStatus
-from src.backend.models import ServerConfiguration, ServerDirectory, SyncTask
-from src.backend.services.database import database_service
+from src.backend.models import Server, ServerDirectory, SyncTask
+from src.backend.services.database import get_database_service
 from src.backend.services.logging import logger
 from src.backend.settings import get_settings
 
@@ -33,18 +33,18 @@ class SyncService:
             self.LOG_DIR.mkdir(parents=True, exist_ok=True)
             logger.warning(f"Cannot write to /var/log/sync_task, using {self.LOG_DIR} instead")
     
-    async def start_sync(self) -> str:
+    async def start_sync(self) -> str | None:
         """Start a new sync task in background.
-        
+
         Returns:
             task_id: Unique identifier for the sync task
         """
         # Create task ID
         task_id = str(uuid.uuid4())
-        
+
         # Create log file path
         log_file_path = str(self.LOG_DIR / f"{task_id}.log")
-        
+
         # Create task record in database
         task = SyncTask(
             id=task_id,
@@ -53,16 +53,15 @@ class SyncService:
             log_file_path=log_file_path,
             total_servers=0,
         )
-        
-        with database_service as db:
-            sync_tasks_table = db.table("sync_tasks")
-            sync_tasks_table.insert(task.model_dump())
-        
+
+        with get_database_service() as db:
+            db.insert_sync_task(task.model_dump())
+
         logger.info(f"Created sync task: {task_id}")
-        
+
         # Fork child process to run sync
         pid = os.fork()
-        
+
         if pid == 0:
             # Child process - run sync logic
             try:
@@ -99,12 +98,10 @@ class SyncService:
             # Get all servers from database
             # Note: Re-establish DB connection in child process
             from src.backend.services.supervisord import SupervisordService
-            from src.backend.tinydb import Database
-            from tinydb import Query
-            
+            from src.backend.sqlmodel_db import Database
+
             db = Database()
-            servers_table = db.db.table("servers")
-            servers = servers_table.all()
+            servers = db.get_all_servers()
             
             total_servers = len(servers)
             task_logger.info(f"Found {total_servers} servers to sync")
@@ -127,12 +124,12 @@ class SyncService:
             
             for idx, server_data in enumerate(servers):
                 try:
-                    server_config = ServerConfiguration(**server_data)
+                    server_config = Server(**server_data)
                     directory = ServerDirectory.from_server_config(server_config)
                     directories.append(directory)
                     
                     # Update synced_at timestamp
-                    server_data["synced_at"] = datetime.now(timezone.utc).isoformat()
+                    server_data["synced_at"] = datetime.now(timezone.utc)
                     synced_servers.append(server_data)
                     
                     task_logger.info(f"Loaded McpDirectory for server: {server_config.name} (ID: {server_config.id})")
@@ -142,8 +139,7 @@ class SyncService:
             
             # Update synced_at timestamps in database
             for server_data in synced_servers:
-                Server = Query()
-                servers_table.update({"synced_at": server_data["synced_at"]}, Server.id == server_data["id"])
+                db.update_server(server_data["id"], {"synced_at": server_data["synced_at"]})
             
             # Sync each directory (clear, write files, install deps)
             for idx, directory in enumerate(directories):
@@ -326,13 +322,9 @@ class SyncService:
             total_servers: Total servers to process
         """
         try:
-            from src.backend.tinydb import Database
+            from src.backend.sqlmodel_db import Database
             db = Database()
-            sync_tasks_table = db.db.table("sync_tasks")
-            
-            from tinydb import Query
-            Task = Query()
-            
+
             update_data = {}
             if status is not None:
                 update_data["status"] = status.value
@@ -341,17 +333,17 @@ class SyncService:
             if current_step is not None:
                 update_data["current_step"] = current_step
             if started_at is not None:
-                update_data["started_at"] = started_at.isoformat()
+                update_data["started_at"] = started_at
             if completed_at is not None:
-                update_data["completed_at"] = completed_at.isoformat()
+                update_data["completed_at"] = completed_at
             if error_message is not None:
                 update_data["error_message"] = error_message
             if servers_processed is not None:
                 update_data["servers_processed"] = servers_processed
             if total_servers is not None:
                 update_data["total_servers"] = total_servers
-            
-            sync_tasks_table.update(update_data, Task.id == task_id)
+
+            db.update_sync_task(task_id, update_data)
             
         except Exception as e:
             logger.error(f"Failed to update task status: {e}")
@@ -366,11 +358,8 @@ class SyncService:
             Task data or None if not found
         """
         try:
-            with database_service as db:
-                sync_tasks_table = db.table("sync_tasks")
-                from tinydb import Query
-                Task = Query()
-                return sync_tasks_table.get(Task.id == task_id)
+            with get_database_service() as db:
+                return db.get_sync_task(task_id)
         except Exception as e:
             logger.error(f"Error getting task {task_id}: {e}")
             return None
@@ -386,19 +375,18 @@ class SyncService:
             Dict with tasks list and pagination info
         """
         try:
-            with database_service as db:
-                sync_tasks_table = db.table("sync_tasks")
-                all_tasks = sync_tasks_table.all()
-                
+            with get_database_service() as db:
+                all_tasks = db.get_all_sync_tasks()
+
                 # Sort by created_at descending
                 all_tasks.sort(
                     key=lambda x: x.get("created_at", ""),
                     reverse=True
                 )
-                
+
                 total = len(all_tasks)
                 tasks = all_tasks[offset:offset + limit]
-                
+
                 return {
                     "tasks": tasks,
                     "total": total,

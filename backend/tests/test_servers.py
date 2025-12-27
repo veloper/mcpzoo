@@ -1,8 +1,10 @@
 """Tests for server management endpoints."""
 
 import pytest
+
 from fastapi.testclient import TestClient
 from src.backend.main import app
+
 
 client = TestClient(app)
 
@@ -29,17 +31,14 @@ def test_create_server(auth_token):
     """Test creating a server."""
     headers = {"Authorization": f"Bearer {auth_token}"}
     server_data = {
-        "id": 999,
+        "id": "test-server-create-999",
         "name": "test-server-create",
         "transport": "stdio",
         "command": "python -m test",
-        "arguments": [],
+        "arguments": "[]",
         "port": 8100,
-        "supervisor_conf": {
-            "command": "python -m test",
-        },
-        "tools": [],
-        "envs": {},
+        "tools": "[]",
+        "envs": "{}",
         "created_at": "2024-01-01T00:00:00",
         "updated_at": "2024-01-01T00:00:00",
     }
@@ -58,15 +57,14 @@ def test_get_server(auth_token):
     
     # First create
     server_data = {
-        "id": 998,
+        "id": "test-server-get-998",
         "name": "test-server-get",
         "transport": "stdio",
         "command": "python -m test",
-        "arguments": [],
+        "arguments": "[]",
         "port": 8101,
-        "supervisor_conf": {"command": "python -m test"},
-        "tools": [],
-        "envs": {},
+        "tools": "[]",
+        "envs": "{}",
         "created_at": "2024-01-01T00:00:00",
         "updated_at": "2024-01-01T00:00:00",
     }
@@ -86,15 +84,14 @@ def test_update_server(auth_token):
     
     # Create
     server_data = {
-        "id": 997,
+        "id": "test-server-update-997",
         "name": "test-server-update",
         "transport": "stdio",
         "command": "python -m test",
-        "arguments": [],
+        "arguments": "[]",
         "port": 8102,
-        "supervisor_conf": {"command": "python -m test"},
-        "tools": [],
-        "envs": {},
+        "tools": "[]",
+        "envs": "{}",
         "created_at": "2024-01-01T00:00:00",
         "updated_at": "2024-01-01T00:00:00",
     }
@@ -114,15 +111,14 @@ def test_delete_server(auth_token):
     
     # Create
     server_data = {
-        "id": 996,
+        "id": "test-server-delete-996",
         "name": "test-server-delete",
         "transport": "stdio",
         "command": "python -m test",
-        "arguments": [],
+        "arguments": "[]",
         "port": 8103,
-        "supervisor_conf": {"command": "python -m test"},
-        "tools": [],
-        "envs": {},
+        "tools": "[]",
+        "envs": "{}",
         "created_at": "2024-01-01T00:00:00",
         "updated_at": "2024-01-01T00:00:00",
     }
