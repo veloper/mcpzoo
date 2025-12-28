@@ -114,7 +114,7 @@ export function ServersList() {
         />
       )}
 
-      {servers.length === 0 ? (
+      {servers.filter(server => server && server.name).length === 0 ? (
         <Alert>
           <AlertDescription>
             No servers configured. Add one to get started.
@@ -127,17 +127,15 @@ export function ServersList() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Transport</TableHead>
-                <TableHead>Port</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {servers.map((server) => (
+              {servers.filter(server => server && server.name).map((server) => (
                 <TableRow key={server.id}>
                   <TableCell className="font-medium">{server.name}</TableCell>
                   <TableCell>{server.transport}</TableCell>
-                  <TableCell>{server.port}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {new Date(server.created_at).toLocaleDateString()}
                   </TableCell>

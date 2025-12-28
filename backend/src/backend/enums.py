@@ -9,16 +9,6 @@ class SyncTaskStatus(str, Enum):
     FAILED = "failed"
 
 
-class SupervisorProcessState(str, Enum):
-    """Supervisor process states."""
-    STOPPED = "stopped"
-    BACKOFF = "backoff"
-    RUNNING = "running"
-    FATAL = "fatal"
-    EXITED = "exited"
-    UNKNOWN = "unknown"
-
-
 class LogLevel(str, Enum):
     """Log levels."""
     DEBUG = "DEBUG"

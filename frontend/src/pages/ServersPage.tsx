@@ -130,7 +130,6 @@ export function ServersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Transport</TableHead>
-                <TableHead>Port</TableHead>
                 <TableHead>Proxy URL</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -143,7 +142,6 @@ export function ServersPage() {
                   <TableCell>
                     <Badge variant="outline">{server.transport}</Badge>
                   </TableCell>
-                  <TableCell>{server.port}</TableCell>
                   <TableCell className="font-mono text-sm">
                     http://localhost:{server.port}/mcp
                   </TableCell>

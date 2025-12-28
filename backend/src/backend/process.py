@@ -16,6 +16,8 @@ class ProcessState(str, Enum):
     BACKOFF = "BACKOFF"
     FATAL = "FATAL"
     EXITED = "EXITED"
+    STARTING = "STARTING"
+    STOPPING = "STOPPING"
     
 class Process(BaseModel):
     """Universal Linux process model - pure data representation."""

@@ -1,62 +1,150 @@
+"""
+This is a self contained module for Supervisor control via XML-RPC.
+
+It contains typed models for the various RPC responses, as well as
+a service wrapper for making the XML-RPC calls over a Unix socket.
+
+All models are defined using Pydantic for type safety and validation.
+
+It also includes helpful pydantic models for generating and representing
+supervisord configurations and config files.
+
+"""
 from __future__ import annotations
 
-from configparser import ConfigParser
-from typing import TYPE_CHECKING, Any, Dict, List
+import http.client, shlex, socket, xmlrpc.client
 
-from pydantic import BaseModel, ConfigDict, Field
-from src.backend.enums import SupervisorProcessState
-from src.backend.process import Process
+from configparser import ConfigParser
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 if TYPE_CHECKING:
     from src.backend.models import Server
 
 
-class SupervisorProcessInfo(BaseModel):
-    """Typed model for supervisord RPC process info response."""
-    model_config = ConfigDict(use_enum_values=True)
+class UnixHTTPConnection(http.client.HTTPConnection):
+    """HTTP connection over Unix socket.
+    """
+    def __init__(self, host, socket_path):
+        super().__init__(host)
+        self.socket_path = socket_path
 
-    name      : str = Field(description="Process name as configured in supervisord")
-    group     : str = Field(description="Process group name")
-    state     : int = Field(description="Numeric state code (0=STOPPED, 10=BACKOFF, 20=RUNNING, 30=FATAL, 40=EXITED)")
-    statename : str = Field(description="Human-readable state name (STOPPED, BACKOFF, RUNNING, FATAL, EXITED, etc.)")
-    pid       : int = Field(description="Process ID (0 if not running)")
-    exitstatus: int = Field(description="Exit status code when process exited (0 if still running)")
-    spawnerr  : str = Field(description="Error message if spawning failed, empty string otherwise")
-    now       : int = Field(description="Current unix timestamp")
-    uptime    : int = Field(description="Seconds the process has been in current state")
+    def connect(self):
+        """Connect to the Unix socket (AF_UNIX) instead of TCP."""
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self.socket_path)
+
+
+class UnixTransport(xmlrpc.client.Transport):
+    """XML-RPC transport over Unix socket."""
+    def __init__(self, socket_path):
+        super().__init__()
+        self.socket_path = socket_path
+
+    def make_connection(self, host):
+        return UnixHTTPConnection(host, self.socket_path)
+
+    
+class SupervisorProcessState(str, Enum):
+    """Supervisord process states."""
+    STOPPED = "STOPPED"
+    STARTING = "STARTING"
+    RUNNING = "RUNNING"
+    BACKOFF = "BACKOFF"
+    STOPPING = "STOPPING"
+    EXITED = "EXITED"
+    FATAL = "FATAL"
+    UNKNOWN = "UNKNOWN"
+
+class SupervisorProcess(BaseModel):
+    """Typed model representing xmlrpc.supervisor.getProcessInfo() or getAllProcessInfo() response for individual process information.
+    
+    {
+        'name': 'context7', 
+        'group': 'context7', 
+        'start': 1766856158, 
+        'stop': 0, 
+        'now': 1766892175, 
+        'state': 20, 
+        'statename': 'RUNNING', 
+        'spawnerr': '', 
+        'exitstatus': 0, 
+        'logfile': '/var/log/supervisor/mcp_context7_stdout.log', 
+        'stdout_logfile': '/var/log/supervisor/mcp_context7_stdout.log', 
+        'stderr_logfile': '', 
+        'pid': 207, 
+        'description': 'pid 207, uptime 10:00:17'
+        }
+    
+    """
+    model_config = ConfigDict()
+
+    name          : str           = Field(description="Process name as configured in supervisord")
+    group         : str           = Field(description="Process group name")
+    statename     : str           = Field(description="Human-readable state name (STOPPED, BACKOFF, RUNNING, FATAL, EXITED)")
+    pid           : int           = Field(description="Process ID (0 if not running)")
+    exitstatus    : int           = Field(description="Exit status code when process exited (0 if still running)")
+    spawnerr      : str           = Field(description="Error message if spawning failed, empty string otherwise")
+    now           : int           = Field(description="Current unix timestamp")
+    start         : int           = Field(description="Unix timestamp when process was started")
+    stop          : int           = Field(description="Unix timestamp when process was stopped (0 if running)")
+    description   : str | None    = Field(default=None, description="Human-readable process description (e.g. 'pid 1234, uptime 1:23:45')")
+    logfile       : str | None    = Field(default=None, description="Path to stdout log file (deprecated, for backward compatibility)")
+    stdout_logfile: str | None    = Field(default=None, description="Path to stdout log file")
+    stderr_logfile: str | None    = Field(default=None, description="Path to stderr log file")
+    state         : int           = Field(description="Current process state as integer code")
 
     @property
-    def process_state(self) -> SupervisorProcessState:
-        """Map supervisor state code to ProcessState enum."""
+    def uptime_seconds(self) -> int:
+        """Get process uptime in seconds, or 0 if not running."""
+        if self.state_enum == SupervisorProcessState.RUNNING:
+            return self.now - self.start
+        return 0
+
+
+    @computed_field(description="Current process state as enum")
+    @property
+    def state_enum(self) -> SupervisorProcessState:
+        # Map integer state codes to enum values
         state_map = {
             0: SupervisorProcessState.STOPPED,
-            10: SupervisorProcessState.BACKOFF,
+            10: SupervisorProcessState.STARTING,
             20: SupervisorProcessState.RUNNING,
-            30: SupervisorProcessState.FATAL,
-            40: SupervisorProcessState.EXITED,
+            30: SupervisorProcessState.BACKOFF,
+            40: SupervisorProcessState.STOPPING,
+            100: SupervisorProcessState.EXITED,
+            200: SupervisorProcessState.FATAL,
+            1000: SupervisorProcessState.UNKNOWN,
         }
         return state_map.get(self.state, SupervisorProcessState.UNKNOWN)
-
-
-class SupervisorState(BaseModel):
-    """Typed model for supervisord state info."""
-    model_config = ConfigDict()
-
-    statecode: int = Field(description="Numeric supervisord state code (0=FATAL, 1=RUNNING, 2=RESTARTING, 3=SHUTDOWN)")
-    statename: str = Field(description="Human-readable supervisord state (FATAL, RUNNING, RESTARTING, SHUTDOWN)")
-    now: int = Field(description="Current unix timestamp")
-    pid: int = Field(description="Process ID of supervisord daemon")
-    server_version: str = Field(description="Supervisord version string")
-
-
-class SupervisorRPCResponse(BaseModel):
-    """Generic RPC response wrapper."""
-    model_config = ConfigDict()
-
-    success: bool
-    data: Dict[str, Any] | None = None
-    error: str | None = None
+    
+    @property
+    def is_running(self) -> bool: return self.state_enum == SupervisorProcessState.RUNNING
+    
+    @property
+    def is_stopped(self) -> bool: return self.state_enum == SupervisorProcessState.STOPPED
+    
+    @property
+    def is_starting(self) -> bool: return self.state_enum == SupervisorProcessState.STARTING
+    
+    @property
+    def is_stopping(self) -> bool: return self.state_enum == SupervisorProcessState.STOPPING
+    
+    @property
+    def is_fatal(self) -> bool: return self.state_enum == SupervisorProcessState.FATAL
+    
+    @property
+    def is_exited(self) -> bool: return self.state_enum == SupervisorProcessState.EXITED
+    
+    @property
+    def is_backoff(self) -> bool: return self.state_enum == SupervisorProcessState.BACKOFF
+    
+    @property
+    def is_unknown(self) -> bool: return self.state_enum == SupervisorProcessState.UNKNOWN
+    
 
 
 class SupervisorGetStateResponse(BaseModel):
@@ -70,85 +158,48 @@ class SupervisorGetStateResponse(BaseModel):
     server_version: str = Field(description="Supervisord version string")
 
 
-class SupervisorGetPIDResponse(BaseModel):
-    """Response from supervisor.getPID() RPC call."""
-    model_config = ConfigDict()
-
-    pid: int = Field(description="Process ID of supervisord daemon")
-
 
 class SupervisorReadConfigResponse(BaseModel):
-    """Response from supervisor.rereadConfig() RPC call."""
+    """Response from supervisor.reloadConfig() RPC call."""
     model_config = ConfigDict()
 
-    added_group_names: List[str] = Field(default_factory=list, description="Group names that were added")
-    changed_group_names: List[str] = Field(default_factory=list, description="Group names that were changed")
-    removed_group_names: List[str] = Field(default_factory=list, description="Group names that were removed")
+    added_group_names   : List[str] = Field(default_factory=list, description="Group names that were added")
+    changed_group_names : List[str] = Field(default_factory=list, description="Group names that were changed")
+    removed_group_names : List[str] = Field(default_factory=list, description="Group names that were removed")
+
+    @classmethod
+    def from_xmlrpc_response(cls, data: Any) -> "SupervisorReadConfigResponse":
+        """Parse XML-RPC response which returns [[added, changed, removed]]."""
+        # The response format is [[added_list, changed_list, removed_list]]
+        if isinstance(data, list) and len(data) == 1 and isinstance(data[0], list) and len(data[0]) == 3:
+            added, changed, removed = data[0]
+            return cls(
+                added_group_names=added if isinstance(added, list) else [],
+                changed_group_names=changed if isinstance(changed, list) else [],
+                removed_group_names=removed if isinstance(removed, list) else []
+            )
+        else:
+            # Fallback for unexpected format
+            return cls()
 
 
 class SupervisorUpdateResponse(BaseModel):
     """Response from supervisor.update() RPC call."""
     model_config = ConfigDict()
 
-    added_group_names: List[str] = Field(default_factory=list, description="Group names that were added")
-    changed_group_names: List[str] = Field(default_factory=list, description="Group names that were changed")
-    removed_group_names: List[str] = Field(default_factory=list, description="Group names that were removed")
+    added_group_names   : List[str] = Field(default_factory=list, description="Group names that were added")
+    changed_group_names : List[str] = Field(default_factory=list, description="Group names that were changed")
+    removed_group_names : List[str] = Field(default_factory=list, description="Group names that were removed")  
 
 
-class SupervisorStartProcessResponse(BaseModel):
-    """Response from supervisor.startProcess() RPC call."""
-    model_config = ConfigDict()
-
-    success: bool = Field(description="Whether the process was successfully started")
-
-
-class SupervisorStopProcessResponse(BaseModel):
-    """Response from supervisor.stopProcess() RPC call."""
-    model_config = ConfigDict()
-
-    success: bool = Field(description="Whether the process was successfully stopped")
-
-
-class SupervisorProcessInfoData(BaseModel):
-    """Individual process info data from supervisor.getAllProcessInfo() RPC."""
-    model_config = ConfigDict()
-
-    name          : str           = Field(description="Process name as configured in supervisord")
-    group         : str           = Field(description="Process group name")
-    state         : int           = Field(description="Numeric state code (0=STOPPED, 10=BACKOFF, 20=RUNNING, 30=FATAL, 40=EXITED)")
-    statename     : str           = Field(description="Human-readable state name (STOPPED, BACKOFF, RUNNING, FATAL, EXITED)")
-    pid           : int           = Field(description="Process ID (0 if not running)")
-    exitstatus    : int           = Field(description="Exit status code when process exited (0 if still running)")
-    spawnerr      : str           = Field(description="Error message if spawning failed, empty string otherwise")
-    now           : int           = Field(description="Current unix timestamp")
-    uptime        : int | None    = Field(default=None, description="Seconds the process has been in current state")
-    start         : int           = Field(description="Unix timestamp when process was started")
-    stop          : int           = Field(description="Unix timestamp when process was stopped (0 if running)")
-    description   : str | None    = Field(default=None, description="Human-readable process description (e.g. 'pid 1234, uptime 1:23:45')")
-    logfile       : str | None    = Field(default=None, description="Path to stdout log file (deprecated, for backward compatibility)")
-    stdout_logfile: str | None    = Field(default=None, description="Path to stdout log file")
-    stderr_logfile: str | None    = Field(default=None, description="Path to stderr log file")
-
-
-class SupervisorGetAllProcessInfoResponse(BaseModel):
-    """Response from supervisor.getAllProcessInfo() RPC call."""
-    model_config = ConfigDict()
-
-    processes: List[SupervisorProcessInfoData] = Field(default_factory=list, description="List of all managed processes")
-
-
-class SupervisorGetProcessInfoResponse(BaseModel):
-    """Response from supervisor.getProcessInfo() RPC call."""
-    model_config = ConfigDict()
-
-    process_info: SupervisorProcessInfoData = Field(description="Information about the requested process")
-
-
-class SupervisorConf(BaseModel):
-    """Supervisord [program:*] configuration."""
+class SupervisorProgramConfig(BaseModel):
+    """Supervisord [program:*] configuration.
+    
+    Only meant to represent a config with a single [program:name] section.
+    """
 
     name                   : str            = Field(description="The name of the program")
-    group                  : str            = Field(default="mcp_servers", description="The group name for the program")
+    group                  : str | None     = Field(default=None, description="The group name for the program")
     command                : str            = Field(description="The command to run the program")
     directory              : str | None     = Field(default=None, description="The working directory for the program")
     umask                  : str            = Field(default="022", description="The umask for the program")
@@ -171,121 +222,274 @@ class SupervisorConf(BaseModel):
     numprocs               : int            = Field(default=1, description="Number of processes to start")
     process_name           : str            = Field(default="%(program_name)s", description="Template for process names")
 
-
-class SupervisorProgram(BaseModel):
-    """Supervisor program - composition of config and optional running process."""
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    config: SupervisorConf
-    process: Process | None = None
-
-    @property
-    def name(self) -> str: return self.config.name
-
-    @property
-    def command(self) -> str: return self.config.command
-
-    @property
-    def directory(self) -> str | None: return self.config.directory
-
-    @property
-    def user(self) -> str | None: return self.config.user
-
-    @property
-    def autostart(self) -> bool: return self.config.autostart
-
-    @property
-    def autorestart(self) -> str: return self.config.autorestart
-
-    @property
-    def environment(self) -> Dict[str, str]: return self.config.environment
-
-    @property
-    def group(self) -> str | None: return self.config.group
-
-    @property
-    def priority(self) -> int: return self.config.priority
-
-
-class SupervisorConfFile(BaseModel):
-    """Supervisord configuration file for MCP server."""
-
-    supervisor_conf: SupervisorConf = Field(description="Supervisord [program:*] configuration")
-
     @classmethod
-    def from_mcp_server_config(cls, config: Server) -> "SupervisorConfFile":
-        """Create SupervisordConfFile from MCPServerConfig, extracting relevant fields."""
-        return cls(supervisor_conf=config.supervisor_conf)
+    def parse(cls, file_contents: str) -> SupervisorProgramConfig:
+        """Parse supervisord [program:*] config from string."""
+        try:
+            config = ConfigParser()
+            config.read_string(file_contents)
+        except Exception as e:
+            raise ValueError(f"Failed to parse config file: {str(e)}") from e
 
-    @classmethod
-    def from_string(cls, file_contents : str) -> "SupervisorConfFile":
-        config = ConfigParser()
-        config.read_string(file_contents)
-        
         # Find the program section
         program_sections = [s for s in config.sections() if s.startswith("program:")]
         if not program_sections:
             raise ValueError("No [program:*] section found in config")
+        if len(program_sections) > 1:
+            raise ValueError(f"Multiple program sections found: {program_sections}. Only one program section is supported.")
+
         program_section_name = program_sections[0]
         section = config[program_section_name]
-        
+
         # Extract name from section name
         name = program_section_name.split(":", 1)[1]
-        
+
+        # Validate required fields
+        if not section.get("command"):
+            raise ValueError("Required field 'command' is missing from program configuration")
+
         # Parse environment if present
         environment = {}
         env_str = section.get("environment")
         if env_str:
-            for pair in env_str.split(","):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    k = k.strip()
-                    v = v.strip().strip('"')
-                    environment[k] = v
-        
-        # Create SupervisorProgramConf
-        supervisor_conf = SupervisorConf.model_validate(section)
-        
-        return cls(supervisor_conf=supervisor_conf)
-    
+            try:
+                # Split on commas to handle "KEY1=VAL1,KEY2=VAL2" format
+                for pair in env_str.split(','):
+                    pair = pair.strip()
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        if key:  # Ensure key is not empty
+                            environment[key] = value
+                        else:
+                            raise ValueError(f"Empty environment variable key in pair: {pair}")
+                    else:
+                        raise ValueError(f"Invalid environment variable format (missing '='): {pair}")
+            except Exception as e:
+                raise ValueError(f"Failed to parse environment variables: {str(e)}") from e
+
+        # Create SupervisorProgramConfig with manual field assignment using ConfigParser type converters
+        try:
+            supervisor_conf = cls(
+                name=name,
+                command=section.get("command"),
+                group=section.get("group"),
+                directory=section.get("directory"),
+                umask=section.get("umask", "022"),
+                user=section.get("user", "root"),
+                autostart=section.getboolean("autostart", True),
+                autorestart=section.get("autorestart", "unexpected"),
+                startsecs=section.getint("startsecs", 1),
+                startretries=section.getint("startretries", 3),
+                priority=section.getint("priority", 999),
+                stopsignal=section.get("stopsignal", "TERM"),
+                stopwaitsecs=section.getint("stopwaitsecs", 10),
+                stdout_logfile=section.get("stdout_logfile"),
+                stdout_logfile_maxbytes=section.getint("stdout_logfile_maxbytes", 50_000_000),
+                stdout_logfile_backups=section.getint("stdout_logfile_backups", 10),
+                stderr_logfile=section.get("stderr_logfile"),
+                stderr_logfile_maxbytes=section.getint("stderr_logfile_maxbytes", 50_000_000),
+                stderr_logfile_backups=section.getint("stderr_logfile_backups", 10),
+                redirect_stderr=section.getboolean("redirect_stderr", True),
+                environment=environment,
+                numprocs=section.getint("numprocs", 1),
+                process_name=section.get("process_name", "%(program_name)s"),
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to parse program configuration: {str(e)}") from e
+
+        return supervisor_conf
+
     def __str__(self) -> str:
-        conf = self.supervisor_conf
         file = []
-
-        file.append(f"[program:{conf.name}]")
-        file.append(f"command={conf.command}")
-        file.append(f"process_name={conf.process_name}")
-        file.append(f"numprocs={conf.numprocs}")
-        file.append(f"priority={conf.priority}")
-        file.append(f"autostart={'true' if conf.autostart else 'false'}")
-        file.append(f"autorestart={conf.autorestart}")
-        file.append(f"startsecs={conf.startsecs}")
-        file.append(f"startretries={conf.startretries}")
-        file.append(f"stopsignal={conf.stopsignal}")
-        file.append(f"stopwaitsecs={conf.stopwaitsecs}")
-        file.append(f"umask={conf.umask}")
-        file.append(f"user={conf.user}")
-        file.append(f"redirect_stderr={'true' if conf.redirect_stderr else 'false'}")
-
-
-        if conf.group:
-            file.append(f"group={conf.group}")
-        
-        if conf.directory:
-            file.append(f"directory={conf.directory}")
-
-        if conf.stdout_logfile:
-            file.append(f"stdout_logfile={conf.stdout_logfile}")
-            file.append(f"stdout_logfile_maxbytes={conf.stdout_logfile_maxbytes}")
-            file.append(f"stdout_logfile_backups={conf.stdout_logfile_backups}")
-
-        if conf.stderr_logfile:
-            file.append(f"stderr_logfile={conf.stderr_logfile}")
-            file.append(f"stderr_logfile_maxbytes={conf.stderr_logfile_maxbytes}")
-            file.append(f"stderr_logfile_backups={conf.stderr_logfile_backups}")
-
-        if conf.environment:
-            envs = ",".join([f'{k}="{v}"' for k, v in self.supervisor_conf.environment.items()])
+        file.append(f"[program:{self.name}]")
+        file.append(f"command={self.command}")
+        file.append(f"process_name={self.process_name}")
+        file.append(f"numprocs={self.numprocs}")
+        file.append(f"priority={self.priority}")
+        file.append(f"autostart={'true' if self.autostart else 'false'}")
+        file.append(f"autorestart={self.autorestart}")
+        file.append(f"startsecs={self.startsecs}")
+        file.append(f"startretries={self.startretries}")
+        file.append(f"stopsignal={self.stopsignal}")
+        file.append(f"stopwaitsecs={self.stopwaitsecs}")
+        file.append(f"umask={self.umask}")
+        file.append(f"user={self.user}")
+        file.append(f"redirect_stderr={'true' if self.redirect_stderr else 'false'}")
+        if self.group:
+            file.append(f"group={self.group}")
+            
+        if self.directory:
+            file.append(f"directory={self.directory}")
+            
+        if self.stdout_logfile:
+            file.append(f"stdout_logfile={self.stdout_logfile}")
+            file.append(f"stdout_logfile_maxbytes={self.stdout_logfile_maxbytes}")
+            file.append(f"stdout_logfile_backups={self.stdout_logfile_backups}")
+            
+        if self.stderr_logfile:
+            file.append(f"stderr_logfile={self.stderr_logfile}")
+            file.append(f"stderr_logfile_maxbytes={self.stderr_logfile_maxbytes}")
+            file.append(f"stderr_logfile_backups={self.stderr_logfile_backups}")
+            
+        if self.environment:
+            envs = ",".join([f"{k}={shlex.quote(v)}" for k, v in self.environment.items()])
             file.append(f"environment={envs}")
-
+            
         return "\n".join(file)
+
+class SupervisorService:
+    """Service wrapper for supervisord via XML-RPC over Unix socket.
+    
+    Returns typed models for all applicable RPC calls that return dict-like responses, otherwise
+    returns native types (e.g. bool for start/stop, int for pid, etc.).
+    
+    unique names reference `[program:name]` sections in supervisord.conf files.
+    
+    Methods:
+    - get_all_programs()
+    - start_program(name: str)
+    - stop_program(name: str)
+    - get_process_info(name: str)
+    - get_supervisord_pid()
+    - get_state()
+    - reread_config()
+    - update()
+    """
+    
+    def __init__(self, socket_path: str = "/var/run/supervisor.sock"):
+        self.socket_path = socket_path
+        self.transport = UnixTransport(socket_path)
+        self.proxy = xmlrpc.client.ServerProxy('http://localhost', transport=self.transport)
+        
+    
+    def get_all_programs(self) -> List[SupervisorProcess]:
+        """Get __all__ supervisor programs as typed Program models"""
+        try:
+            result = self.proxy.supervisor.getAllProcessInfo()
+            print("=" * 20)
+            print(result)
+            print("=" * 20)
+            if not isinstance(result, list):
+                raise RuntimeError("Invalid response from supervisord getAllProcessInfo")
+            return [SupervisorProcess.model_validate(p) for p in result]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get programs: {str(e)}") from e
+    
+    def start_program(self, name: str) -> bool:
+        """Start a specific program's process and return typed response."""
+        try:
+            return bool(self.proxy.supervisor.startProcess(name))
+        except Exception as e:
+            raise RuntimeError(f"Failed to start program {name}: {str(e)}") from e
+        
+    def stop_program(self, name: str) -> bool:
+        """Stop a specific program's process and return typed response."""
+        try:
+            return bool(self.proxy.supervisor.stopProcess(name))
+        except Exception as e:
+            raise RuntimeError(f"Failed to stop program {name}: {str(e)}") from e
+        
+    def get_process_info(self, name: str) -> SupervisorProcess:
+        """Get info for a specific process by name."""
+        try:
+            data: Any = self.proxy.supervisor.getProcessInfo(name)
+            return SupervisorProcess.model_validate(data)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get process info for {name}: {str(e)}") from e
+
+
+    def get_supervisord_pid(self) -> int:
+        """Get the PID of supervisord itself."""
+        try:
+            pid: Any = self.proxy.supervisor.getPID()
+            return int(pid)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get supervisord PID: {str(e)}") from e
+
+    def get_state(self) -> SupervisorGetStateResponse:
+        """Get supervisord state information
+        
+        Meaning, get the state of supervisord itself, not the managed processes.
+        """
+        try:
+            data: Any = self.proxy.supervisor.getState()
+            return SupervisorGetStateResponse(**data)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get supervisord state: {str(e)}") from e
+        
+    def reread_config(self) -> bool:
+        """Reload supervisord configuration files.
+
+        Due to a bug in supervisord's xmlrpc service, this method actually needs to
+        shell-out to the supervisorctl reread command to properly reread configs.
+        """
+        try:
+            # data: Any = self.proxy.supervisor.reloadConfig()
+            # return SupervisorReadConfigResponse.from_xmlrpc_response(data)
+
+            import subprocess
+
+            result = subprocess.run(
+                ["supervisorctl", "reread"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            output = result.stdout.strip()
+            if "No config updates to process" in output:
+                return True
+
+            # Parse the actual output format: "groupname: status"
+            # where status can be: changed, disappeared, available
+            lines = output.split('\n')
+            for line in lines:
+                line = line.strip()
+                if ':' in line:
+                    group_name, status = line.split(':', 1)
+                    group_name = group_name.strip()
+                    status = status.strip()
+                    if status in ['changed', 'disappeared', 'available']:
+                        return True
+
+            # If we get here, the output format is unexpected
+            raise RuntimeError(f"Unexpected output from supervisorctl reread: {output}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to reload supervisord config: {str(e)}") from e
+        
+    def update(self) -> SupervisorUpdateResponse:
+        """Update supervisord with any changes from the last reread."""
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["supervisorctl", "update"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            # Parse the output to extract added/changed/removed groups
+            output = result.stdout.strip()
+            added = []
+            changed = []
+            removed = []
+
+            for line in output.split('\n'):
+                line = line.strip()
+                if ': added' in line:
+                    added.append(line.split(': added')[0])
+                elif ': changed' in line:
+                    changed.append(line.split(': changed')[0])
+                elif ': removed' in line:
+                    removed.append(line.split(': removed')[0])
+
+            return SupervisorUpdateResponse(
+                added_group_names=added,
+                changed_group_names=changed,
+                removed_group_names=removed
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to update supervisord config: {str(e)}") from e

@@ -6,9 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.backend.auth import verify_token
 from src.backend.models import Server
 from src.backend.services.database import DatabaseService, get_database_service
-from src.backend.services.supervisord import get_supervisord_service
-from src.backend.supervisor import SupervisorProgram
-from src.backend.utils.shell import run_command
+from src.backend.services.supervisor import SupervisorService, get_supervisor_service
 
 
 router = APIRouter(prefix="/api/programs", tags=["programs"])
@@ -17,10 +15,10 @@ router = APIRouter(prefix="/api/programs", tags=["programs"])
 @router.get("", response_model=List[dict])
 async def list_processes(
     username: str = Depends(verify_token),
-    srv = Depends(get_supervisord_service),
+    srv : SupervisorService = Depends(get_supervisor_service),
 ):
     """List all supervisor programs."""
-    programs = await srv.get_all_programs()
+    programs = srv.get_all_programs()
     return [p.model_dump() for p in programs if p.name != "overmind"]
 
 
@@ -29,11 +27,15 @@ async def list_processes(
 async def start_process(
     name: str,
     username: str = Depends(verify_token),
-    srv = Depends(get_supervisord_service),
+    srv = Depends(get_supervisor_service),
 ):
     """Start program."""
     result = await srv.start_program(name)
-    if not result.success: raise HTTPException( status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to start {name}", )
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to start {name}",
+        )
     return {"status": "started", "program": name}
 
 
@@ -41,7 +43,7 @@ async def start_process(
 async def stop_process(
     name: str,
     username: str = Depends(verify_token),
-    srv = Depends(get_supervisord_service),
+    srv = Depends(get_supervisor_service),
 ):
     """Stop program."""
     if not await srv.stop_program(name):
@@ -63,9 +65,9 @@ async def get_process_logs(
     server_name = name
 
     # Look up server config by name
-    with db_service as db:
-        all_servers = db.get_all_servers()
-        server_data = next((s for s in all_servers if s.get('name') == server_name), None)
+    db = db_service.get_db()
+    all_servers = db.get_all_servers()
+    server_data = next((s for s in all_servers if s.get('name') == server_name), None)
 
     if not server_data:
         raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")
@@ -148,7 +150,7 @@ async def get_process_logs(
 async def process_status(
     name: str,
     username: str = Depends(verify_token),
-    srv = Depends(get_supervisord_service),
+    srv = Depends(get_supervisor_service),
 ):
     """Get program status."""
     prog = await srv.get_program_status(name)
@@ -162,7 +164,7 @@ async def process_status(
 @router.put("/reread_config")
 async def reread_config(
     username: str = Depends(verify_token),
-    srv = Depends(get_supervisord_service),
+    srv = Depends(get_supervisor_service),
 ):
     """Reread supervisord configuration and apply changes."""
     # reread_config() already handles both reading and updating

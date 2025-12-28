@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     frontend_web_port: int = 7999
     
     # Database
-    tinydb_path: str = "/app/data/tinydb.json"
     sqlite_path: str = "/app/data/mcpzoo.db"
 
     # MCP
@@ -61,23 +60,14 @@ class Settings(BaseSettings):
         if not self.app_env:
             self.app_env = get_env()
 
-        # Override database paths for development and test
-        if self.app_env in ["dev", "test"]:
-            data_dir = project_root / "data"
-            self.tinydb_path = str(data_dir / "tinydb.json")
-            self.sqlite_path = str(data_dir / "mcpzoo.db")
-
-        # Override MCP server path for development and test
-        if self.app_env in ["dev", "test"]:
-            self.mcp_server_path = str(project_root / "data" / "servers")
-
+        # Validate required settings
         if not self.app_username or not self.app_password:
             raise ValueError("APP_USERNAME and APP_PASSWORD are required")
 
 
 
 # Instantiate settings singleton
-@lru_cache
+@lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

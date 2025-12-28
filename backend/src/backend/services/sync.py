@@ -3,6 +3,7 @@
 import json, logging, os, subprocess, uuid
 
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,7 @@ class SyncService:
     
     # Log directory for sync tasks
     LOG_DIR = Path("/var/log/sync_task")
+    SERVERS_DIR = Path("/app/servers/")
     
     def __init__(self):
         """Initialize sync service."""
@@ -54,8 +56,8 @@ class SyncService:
             total_servers=0,
         )
 
-        with get_database_service() as db:
-            db.insert_sync_task(task.model_dump())
+        db = get_database_service().get_db()
+        db.insert_sync_task(task.model_dump())
 
         logger.info(f"Created sync task: {task_id}")
 
@@ -97,7 +99,7 @@ class SyncService:
             
             # Get all servers from database
             # Note: Re-establish DB connection in child process
-            from src.backend.services.supervisord import SupervisordService
+            from src.backend.services.supervisor import SupervisorService
             from src.backend.sqlmodel_db import Database
 
             db = Database()
@@ -141,6 +143,16 @@ class SyncService:
             for server_data in synced_servers:
                 db.update_server(server_data["id"], {"synced_at": server_data["synced_at"]})
             
+            # Clear the entire /app/servers/ directory before syncing to remove deleted servers
+            existing_dirs = [d for d in self.SERVERS_DIR.iterdir() if d.is_dir()]
+            for dir_path in existing_dirs:
+                try:
+                    task_logger.info(f"Removing existing server directory: {dir_path}")
+                    subprocess.run(["rm", "-rf", str(dir_path)], check=True)
+                except Exception as e:
+                    task_logger.error(f"Failed to remove directory {dir_path}: {str(e)}")
+                    raise
+            
             # Sync each directory (clear, write files, install deps)
             for idx, directory in enumerate(directories):
                 try:
@@ -166,7 +178,7 @@ class SyncService:
             )
             
             try:
-                supervisor_service = SupervisordService()
+                supervisor_service = SupervisorService()
                 
                 # Reread configuration
                 task_logger.info("=" * 70)
@@ -177,47 +189,34 @@ class SyncService:
                 
                 # Log detailed reread results
                 task_logger.info(f"✓ Supervisord reread completed")
-                if reread_result.added_group_names:
-                    task_logger.info(f"  Added groups: {', '.join(reread_result.added_group_names)}")
-                if reread_result.changed_group_names:
-                    task_logger.info(f"  Changed groups: {', '.join(reread_result.changed_group_names)}")
-                if reread_result.removed_group_names:
-                    task_logger.info(f"  Removed groups: {', '.join(reread_result.removed_group_names)}")
                 
-                # If there are changes, update supervisord
-                if reread_result.added_group_names or reread_result.changed_group_names or reread_result.removed_group_names:
-                    task_logger.info("")
-                    task_logger.info("Configuration changes detected")
-                    task_logger.info("Applying supervisord updates...")
+                # Always apply updates even if no changes detected
+                task_logger.info("Applying supervisord updates...")
+                
+                self._update_task_status(
+                    task_id=task_id,
+                    current_step="Applying supervisord updates"
+                )
+                
+                try:
+                    update_result = supervisor_service.update()
                     
-                    self._update_task_status(
-                        task_id=task_id,
-                        current_step="Applying supervisord updates"
-                    )
+                    # Log detailed update results
+                    task_logger.info(f"✓ Supervisord update completed")
+                    if update_result.added_group_names:
+                        task_logger.info(f"  Added groups: {', '.join(update_result.added_group_names)}")
+                    if update_result.changed_group_names:
+                        task_logger.info(f"  Changed groups: {', '.join(update_result.changed_group_names)}")
+                    if update_result.removed_group_names:
+                        task_logger.info(f"  Removed groups: {', '.join(update_result.removed_group_names)}")
                     
-                    try:
-                        update_result = supervisor_service.update()
-                        
-                        # Log detailed update results
-                        task_logger.info(f"✓ Supervisord update completed")
-                        if update_result.added_group_names:
-                            task_logger.info(f"  Added groups: {', '.join(update_result.added_group_names)}")
-                        if update_result.changed_group_names:
-                            task_logger.info(f"  Changed groups: {', '.join(update_result.changed_group_names)}")
-                        if update_result.removed_group_names:
-                            task_logger.info(f"  Removed groups: {', '.join(update_result.removed_group_names)}")
-                        
-                        task_logger.info("Supervisord configuration updated successfully")
-                        task_logger.info("=" * 70)
-                        
-                    except Exception as update_error:
-                        task_logger.error(f"✗ Failed to update supervisord: {str(update_error)}", exc_info=True)
-                        task_logger.error("=" * 70)
-                        raise RuntimeError(f"Supervisord update failed: {str(update_error)}") from update_error
-                else:
-                    task_logger.info("No configuration changes detected")
-                    task_logger.info("Supervisord is already in sync with current configuration")
+                    task_logger.info("Supervisord configuration updated successfully")
                     task_logger.info("=" * 70)
+                    
+                except Exception as update_error:
+                    task_logger.error(f"✗ Failed to update supervisord: {str(update_error)}", exc_info=True)
+                    task_logger.error("=" * 70)
+                    raise RuntimeError(f"Supervisord update failed: {str(update_error)}") from update_error
                     
             except Exception as e:
                 task_logger.error(f"✗ Failed to update supervisord configuration: {str(e)}", exc_info=True)
@@ -358,8 +357,8 @@ class SyncService:
             Task data or None if not found
         """
         try:
-            with get_database_service() as db:
-                return db.get_sync_task(task_id)
+            db = get_database_service().get_db()
+            return db.get_sync_task(task_id)
         except Exception as e:
             logger.error(f"Error getting task {task_id}: {e}")
             return None
@@ -375,59 +374,61 @@ class SyncService:
             Dict with tasks list and pagination info
         """
         try:
-            with get_database_service() as db:
-                all_tasks = db.get_all_sync_tasks()
+            db = get_database_service().get_db()
+            all_tasks = db.get_all_sync_tasks()
 
-                # Sort by created_at descending
-                all_tasks.sort(
-                    key=lambda x: x.get("created_at", ""),
-                    reverse=True
-                )
+            # Sort by created_at descending
+            all_tasks.sort(
+                key=lambda x: x.get("created_at", ""),
+                reverse=True
+            )
 
-                total = len(all_tasks)
-                tasks = all_tasks[offset:offset + limit]
+            total = len(all_tasks)
+            tasks = all_tasks[offset:offset + limit]
 
-                return {
-                    "tasks": tasks,
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                }
+            return {
+                "tasks": tasks,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
         except Exception as e:
             logger.error(f"Error listing tasks: {e}")
             return {"tasks": [], "total": 0, "limit": limit, "offset": offset}
     
     async def get_task_logs(self, task_id: str, tail: int = 100) -> str:
         """Get logs for a sync task.
-        
+
         Args:
             task_id: Task identifier
-            tail: Number of lines to return from end of file
-            
+            tail: Number of lines to return from end of file (0 = all lines)
+
         Returns:
             Log content or empty string if not found
         """
         task = await self.get_task(task_id)
         if not task or not task.get("log_file_path"):
             return ""
-        
+
         log_file = Path(task["log_file_path"])
         if not log_file.exists():
             return ""
-        
+
         try:
             with open(log_file, "r") as f:
                 lines = f.readlines()
-                return "".join(lines[-tail:])
+                if tail == 0:
+                    # Return all lines
+                    return "".join(lines)
+                else:
+                    # Return last N lines
+                    return "".join(lines[-tail:])
         except Exception as e:
             logger.error(f"Error reading logs for {task_id}: {e}")
             return ""
 
 
-# Singleton instance
-sync_service = SyncService()
-
-
+@lru_cache()
 def get_sync_service() -> SyncService:
     """Dependency for FastAPI to inject sync service."""
-    return sync_service
+    return SyncService()

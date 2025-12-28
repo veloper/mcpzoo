@@ -25,13 +25,13 @@ class McpServersJsonFile(BaseModel):
             # Transport-specific config
             if config.transport == MCPServerTransport.STDIO:
                 servers_dict[config.name] = {
-                    "type": config.transport.value,
+                    "type": config.transport,
                     "command": config.command,
                     "args": config.arguments
                 }
             else:
                 servers_dict[config.name] = {
-                    "type": config.transport.value,
+                    "type": config.transport,
                     "url": config.url
                 }
 

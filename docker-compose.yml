@@ -2,7 +2,7 @@ services:
   mcpzoo:
     build:
       context: .
-      dockerfile: Dockerfile.development
+      dockerfile: Dockerfile.dev
     container_name: "mcpzoo-dev"
     restart: always
     ports:

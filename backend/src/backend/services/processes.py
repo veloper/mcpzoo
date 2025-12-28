@@ -1,6 +1,7 @@
 """Processes service for managing system processes."""
 import os, signal
 
+from functools import lru_cache
 from typing import Callable, List, Optional
 
 from src.backend.process import Process, ProcessState
@@ -287,10 +288,7 @@ class ProcessesService:
         return True
 
 
-# Global service instance
-processes_service = ProcessesService()
-
-
+@lru_cache()
 def get_processes_service() -> ProcessesService:
     """Dependency for FastAPI to inject processes service."""
-    return processes_service
+    return ProcessesService()

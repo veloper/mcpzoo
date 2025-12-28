@@ -13,7 +13,7 @@ from src.backend.fast_mcp import FastMcpServerProxyServerFile
 from src.backend.mcp import McpServersJsonFile
 from src.backend.mise import MiseTomlFile
 from src.backend.settings import get_settings
-from src.backend.supervisor import SupervisorConf, SupervisorConfFile
+from src.backend.supervisor import SupervisorProgramConfig
 
 
 settings = get_settings()
@@ -82,9 +82,9 @@ class Server(SQLModel, table=True):
     updated_at      : datetime | None          = Field(default=None, description="Last update timestamp")
     synced_at       : datetime | None          = Field(default=None, description="Last sync timestamp")
 
-    def get_supervisor_conf(self) -> SupervisorConf:
+    def get_supervisor_conf(self) -> SupervisorProgramConfig:
         """Gets the supervisord program configuration for this server."""
-        return SupervisorConf(
+        return SupervisorProgramConfig(
             name=self.name,
             command="mise run start",
             directory="/app/servers/" + self.id,
@@ -150,7 +150,7 @@ class ServerDirectory(BaseModel):
 
     mise_toml_file: MiseTomlFile
     fastmcp_server_proxy_server_file: FastMcpServerProxyServerFile
-    supervisord_conf_file: SupervisorConfFile
+    supervisord_program_config: SupervisorProgramConfig
     mcp_servers_json_file: McpServersJsonFile
 
     @classmethod
@@ -158,106 +158,40 @@ class ServerDirectory(BaseModel):
         """
         Create McpServerDirectory from MCPServerConfig.
         """
-        # Convert SQLModel to dict and back to handle JSON serialization
-        config_dict = server_config.model_dump()
+        
+        path = Path(get_settings().mcp_server_path) / server_config.id
 
-        # Create a temporary BaseModel version for compatibility
-        class TempServerConfig(BaseModel):
-            id: str
-            name: str
-            envs: Dict[str, str]
-            transport: MCPServerTransport
-            url: str | None
-            command: str | None
-            arguments: list[str]
-            port: int | None
-            tools: List[ServerTool]
-            task_install: str | None
-            task_uninstall: str | None
-            autostart: bool
-            autorestart: str
-            priority: int
-            startsecs: int
-            startretries: int
-            stopsignal: str
-            stopwaitsecs: int
-            log_level: LogLevel
-            stdout_logfile: str | None
-            stdout_logfile_maxbytes: int
-            stdout_logfile_backups: int
-            redirect_stderr: bool
-            stderr_logfile: str | None
-            stderr_logfile_maxbytes: int
-            stderr_logfile_backups: int
-            created_at: datetime | None
-            updated_at: datetime | None
-            synced_at: datetime | None
+        server_config = Server.model_validate_json(server_config.model_dump_json())
 
-            @property
-            def supervisor_conf(self) -> SupervisorConf:
-                """Gets the supervisord program configuration for this server."""
-                return SupervisorConf(
-                    name=self.name,
-                    command="mise run start",
-                    directory="/app/servers/" + self.id,
-                    autostart=self.autostart,
-                    autorestart=self.autorestart,
-                    priority=self.priority,
-                    startsecs=self.startsecs,
-                    startretries=self.startretries,
-                    stopsignal=self.stopsignal,
-                    stopwaitsecs=self.stopwaitsecs,
-                    stdout_logfile=self.stdout_logfile,
-                    stdout_logfile_maxbytes=self.stdout_logfile_maxbytes,
-                    stdout_logfile_backups=self.stdout_logfile_backups,
-                    stderr_logfile=self.stderr_logfile,
-                    stderr_logfile_maxbytes=self.stderr_logfile_maxbytes,
-                    stderr_logfile_backups=self.stderr_logfile_backups,
-                    redirect_stderr=self.redirect_stderr,
-                    environment=self.envs
-                )
-
-        temp_config = TempServerConfig(
-            id=config_dict['id'],
-            name=config_dict['name'],
-            envs=config_dict['envs'] if isinstance(config_dict['envs'], dict) else json.loads(config_dict['envs']) if config_dict['envs'] else {},
-            transport=config_dict['transport'],
-            url=config_dict['url'],
-            command=config_dict['command'],
-            arguments=config_dict['arguments'] or [],
-            port=config_dict['port'],
-            tools=[ServerTool(**tool) for tool in config_dict['tools']] if config_dict['tools'] else [],
-            task_install=config_dict['task_install'],
-            task_uninstall=config_dict['task_uninstall'],
-            autostart=config_dict['autostart'],
-            autorestart=config_dict['autorestart'],
-            priority=config_dict['priority'],
-            startsecs=config_dict['startsecs'],
-            startretries=config_dict['startretries'],
-            stopsignal=config_dict['stopsignal'],
-            stopwaitsecs=config_dict['stopwaitsecs'],
-            log_level=config_dict['log_level'],
-            stdout_logfile=config_dict['stdout_logfile'],
-            stdout_logfile_maxbytes=config_dict['stdout_logfile_maxbytes'],
-            stdout_logfile_backups=config_dict['stdout_logfile_backups'],
-            redirect_stderr=config_dict['redirect_stderr'],
-            stderr_logfile=config_dict['stderr_logfile'],
-            stderr_logfile_maxbytes=config_dict['stderr_logfile_maxbytes'],
-            stderr_logfile_backups=config_dict['stderr_logfile_backups'],
-            created_at=config_dict['created_at'],
-            updated_at=config_dict['updated_at'],
-            synced_at=config_dict['synced_at']
+        supervisord_program_config = SupervisorProgramConfig(
+            name=server_config.name,
+            command="mise run start",
+            directory=str(path),
+            autostart=server_config.autostart,
+            autorestart=server_config.autorestart,
+            priority=server_config.priority,
+            startsecs=server_config.startsecs,
+            startretries=server_config.startretries,
+            stopsignal=server_config.stopsignal,
+            stopwaitsecs=server_config.stopwaitsecs,
+            stdout_logfile=server_config.stdout_logfile,
+            stdout_logfile_maxbytes=server_config.stdout_logfile_maxbytes,
+            stdout_logfile_backups=server_config.stdout_logfile_backups,
+            stderr_logfile=server_config.stderr_logfile,
+            stderr_logfile_maxbytes=server_config.stderr_logfile_maxbytes,
+            stderr_logfile_backups=server_config.stderr_logfile_backups,
+            redirect_stderr=server_config.redirect_stderr,
+            environment=server_config.envs
         )
 
-        path = Path(get_settings().mcp_server_path) / temp_config.id
 
         data = {
             "path": path,
-            "server_config": temp_config,
-            "mise_toml_file": MiseTomlFile.from_mcp_server_config(temp_config),
-            "fastmcp_server_proxy_server_file": FastMcpServerProxyServerFile.from_mcp_server_config(temp_config, json_file_path=os.path.join(path, "mcpServers.json")),
-            "supervisord_conf_file": SupervisorConfFile.from_mcp_server_config(temp_config),
-            "mcp_servers_json_file": McpServersJsonFile.from_mcp_server_configs([temp_config])
+            "server_config": server_config,
+            "mise_toml_file": MiseTomlFile.from_mcp_server_config(server_config),
+            "fastmcp_server_proxy_server_file": FastMcpServerProxyServerFile.from_mcp_server_config(server_config, json_file_path=os.path.join(path, "mcpServers.json")),
+            "supervisord_program_config": supervisord_program_config,
+            "mcp_servers_json_file": McpServersJsonFile.from_mcp_server_configs([server_config])
         }
 
         return cls(**data)
@@ -325,7 +259,7 @@ class ServerDirectory(BaseModel):
         # Write all files
         (self.path / "mcpServers.json").write_text(str(self.mcp_servers_json_file))
         (self.path / "server.py").write_text(str(self.fastmcp_server_proxy_server_file))
-        (self.path / "supervisord.conf").write_text(str(self.supervisord_conf_file))
+        (self.path / "supervisord.conf").write_text(str(self.supervisord_program_config))
         (self.path / "mise.toml").write_text(str(self.mise_toml_file))
 
 
@@ -410,14 +344,14 @@ class ServerDirectory(BaseModel):
             "server.py",
             "--host", "0.0.0.0",
             "--port", str(self.server_config.port),
-            "--log-level", self.server_config.log_level.value,
+            "--log-level", self.server_config.log_level,
             "--transport", "http",
             "--project", str(self.path),
             "--no-banner"
         ]
 
 
-    def get_supervisord_program_command(self) -> List[str]:
+    def get_supervisor_program_command(self) -> List[str]:
         """Get the command to run the MCP server via supervisord."""
         return ["mise", "run", "start"]
 
@@ -458,13 +392,13 @@ class ServerDirectory(BaseModel):
         # == Supervisord ==
 
         # set supervisord directory to the server path
-        self.supervisord_conf_file.supervisor_conf.directory = str(self.path)
+        self.supervisord_program_config.directory = str(self.path)
 
         # set supervisord environment variable to allow mise to use the mise.toml in this directory
-        self.supervisord_conf_file.supervisor_conf.environment["MISE_TRUSTED_CONFIG_PATHS"] = str(self.path)
+        self.supervisord_program_config.environment["MISE_TRUSTED_CONFIG_PATHS"] = str(self.path)
 
         # we need to set the run command on supervisord to use mise run
-        self.supervisord_conf_file.supervisor_conf.command = " ".join(self.get_supervisord_program_command())
+        self.supervisord_program_config.command = " ".join(self.get_supervisor_program_command())
 
 
     # =========================
@@ -512,5 +446,5 @@ class ServerDirectory(BaseModel):
         # Write all files
         (self.path / "mcpServers.json").write_text(str(self.mcp_servers_json_file))
         (self.path / "server.py").write_text(str(self.fastmcp_server_proxy_server_file))
-        (self.path / "supervisord.conf").write_text(str(self.supervisord_conf_file))
+        (self.path / "supervisord.conf").write_text(str(self.supervisord_program_config))
         (self.path / "mise.toml").write_text(str(self.mise_toml_file))

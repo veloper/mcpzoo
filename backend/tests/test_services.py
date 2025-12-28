@@ -6,6 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from src.backend.services.database import DatabaseService
+from src.backend.services.processes import ProcessesService
+from src.backend.services.supervisor import SupervisorService
 
 
 class InMemoryDatabaseService(DatabaseService):
@@ -78,3 +80,34 @@ class InMemoryDatabaseService(DatabaseService):
         self._id_counter = 0
 
 
+class MockSupervisordService(SupervisorService):
+    """Mock supervisor service for testing."""
+
+    def __init__(self):
+        """Initialize with mock data."""
+        self.programs = []
+        self.groups = {}
+
+    def get_all_programs(self):
+        """Return mock programs."""
+        return self.programs
+
+    def reread_config(self):
+        """Mock reread config."""
+        class MockResult:
+            added_group_names = []
+            changed_group_names = []
+            removed_group_names = []
+        return MockResult()
+
+
+class MockProcessesService(ProcessesService):
+    """Mock processes service for testing."""
+
+    def __init__(self):
+        """Initialize with mock data."""
+        self.processes = []
+
+    def get_all_processes(self):
+        """Return mock processes."""
+        return self.processes

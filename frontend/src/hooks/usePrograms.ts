@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
-// Module-level cache & in-flight fetch promise to deduplicate requests
-let cachedProcesses: Process[] | null = null
-let inFlightFetch: Promise<void> | null = null
 
-
-export interface Process {
+export interface Program {
   name: string
   status: string
   pid?: number
@@ -15,113 +12,98 @@ export interface Process {
 }
 
 export function usePrograms() {
-  const [processes, setProcesses] = useState<Process[]>([])
+  const location = useLocation()
+  const [programs, setPrograms] = useState<Program[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [startingProcesses, setStartingProcesses] = useState<Set<string>>(new Set())
-  const [stoppingProcesses, setStoppingProcesses] = useState<Set<string>>(new Set())
-  const [restartingProcesses, setRestartingProcesses] = useState<Set<string>>(new Set())
+  const [startingPrograms, setStartingPrograms] = useState<Set<string>>(new Set())
+  const [stoppingPrograms, setStoppingPrograms] = useState<Set<string>>(new Set())
+  const [restartingPrograms, setRestartingPrograms] = useState<Set<string>>(new Set())
 
-  // fetchProcesses supports a `force` flag to bypass module cache
-  const fetchProcesses = async (force = false) => {
+  const fetchPrograms = async () => {
     try {
-      // If we already have cached data and caller didn't force, use it
-      if (!force && cachedProcesses) {
-        setProcesses(cachedProcesses)
-        setError(null)
-        return
-      }
-
-      // If a fetch is already in-flight, await it and reuse the cached result
-      if (!force && inFlightFetch) {
-        await inFlightFetch
-        setProcesses(cachedProcesses || [])
-        setError(null)
-        return
-      }
-
       setLoading(true)
+      const data = await apiClient.listPrograms()
+      const programsData = data.test || data
 
-      // Start an in-flight fetch and store the promise so other instances can await it
-      inFlightFetch = (async () => {
-        const data = await apiClient.listPrograms()
-        const processesData = data.test || data
+      // The backend returns SupervisorProcess objects directly
+      // Map SupervisorProcess fields to our Program interface
+      const programList = Array.isArray(programsData) ? programsData
+        .filter((p: any) => p && p.name)
+        .map((p: any) => {
+          // Calculate uptime: if running (state=20), uptime = now - start, else 0
+          const uptime = (p.state === 20 && p.now && p.start) ? (p.now - p.start) : 0
 
-        // The backend returns a list of Program objects (config + process)
-        // We need to extract the process info
-        const processList = Array.isArray(processesData) ? processesData.map((p: any) => ({
-          name: p.config.name,
-          status: p.process?.state || 'UNKNOWN',
-          pid: p.process?.pid,
-          uptime: p.process?.uptime,
-          exit_code: p.process?.exit_code
-        })) : []
+          return {
+            name: p.name,
+            status: p.statename || 'UNKNOWN',  // Use statename (human-readable) instead of state (int)
+            pid: p.pid || undefined,
+            uptime: uptime || undefined,
+            exit_code: p.exitstatus || undefined
+          }
+        }) : []
 
-        cachedProcesses = processList
-        setProcesses(processList)
-        setError(null)
-      })()
-
-      await inFlightFetch
+      setPrograms(programList)
+      setError(null)
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch processes')
+      setError(err.message || 'Failed to fetch programs')
       throw err
     } finally {
-      inFlightFetch = null
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchProcesses()
-  }, [])
+    fetchPrograms()
+  }, [location.pathname])
 
-  // Map backend Program object to our simple Process type
-  const mapProgramToProcess = (p: any): Process => ({
-    name: p?.config?.name,
-    status: p?.process?.state || 'UNKNOWN',
-    pid: p?.process?.pid,
-    uptime: p?.process?.uptime,
-    exit_code: p?.process?.exit_code
-  })
 
-  // Refresh a single process row by calling the backend status endpoint
-  const refreshProcess = async (name: string) => {
+
+  // Refresh a single program row by calling the backend status endpoint
+  const refreshProgram = async (name: string) => {
     try {
       const data = await apiClient.getProgram(name)
-      const prog = data.test || data
-      const proc = mapProgramToProcess(prog)
+      const progData = data.test || data
 
-      if (cachedProcesses) {
-        const newList = cachedProcesses.slice()
-        const idx = newList.findIndex(p => p.name === name)
-        if (idx >= 0) newList[idx] = proc
-        else newList.push(proc)
-        cachedProcesses = newList
-        setProcesses(newList)
-      } else {
-        cachedProcesses = [proc]
-        setProcesses([proc])
+      // Backend returns a single SupervisorProcess object, map it to Program interface
+      const uptime = (progData.state === 20 && progData.now && progData.start) ? (progData.now - progData.start) : 0
+      const prog: Program = {
+        name: progData.name,
+        status: progData.statename || 'UNKNOWN',
+        pid: progData.pid || undefined,
+        uptime: uptime || undefined,
+        exit_code: progData.exitstatus || undefined
       }
+
+      setPrograms(prevPrograms => {
+        const newList = prevPrograms.slice()
+        const idx = newList.findIndex(p => p.name === name)
+        if (idx >= 0) {
+          newList[idx] = prog
+        } else {
+          newList.push(prog)
+        }
+        return newList
+      })
     } catch (err: any) {
       // If single-row refresh fails, fall back to a full refresh
-      await fetchProcesses(true)
+      await fetchPrograms()
       throw err
     }
   }
 
-  const startProcess = async (name: string) => {
-    setStartingProcesses(prev => new Set(prev).add(name))
+  const startProgram = async (name: string) => {
+    setStartingPrograms(prev => new Set(prev).add(name))
     try {
       await apiClient.startProgram(name)
-      // Wait for the process to fully start and supervisor to update
+      // Wait for the program to fully start and supervisor to update
       await new Promise(resolve => setTimeout(resolve, 2000))
-      await refreshProcess(name)
+      await refreshProgram(name)
     } catch (err: any) {
-      setError(err.message || 'Failed to start process')
+      setError(err.message || 'Failed to start program')
       throw err
     } finally {
-      setStartingProcesses(prev => {
+      setStartingPrograms(prev => {
         const newSet = new Set(prev)
         newSet.delete(name)
         return newSet
@@ -129,18 +111,18 @@ export function usePrograms() {
     }
   }
 
-  const stopProcess = async (name: string) => {
-    setStoppingProcesses(prev => new Set(prev).add(name))
+  const stopProgram = async (name: string) => {
+    setStoppingPrograms(prev => new Set(prev).add(name))
     try {
       await apiClient.stopProgram(name)
-      // Wait for the process to fully stop and supervisor to update
+      // Wait for the program to fully stop and supervisor to update
       await new Promise(resolve => setTimeout(resolve, 2000))
-      await refreshProcess(name)
+      await refreshProgram(name)
     } catch (err: any) {
-      setError(err.message || 'Failed to stop process')
+      setError(err.message || 'Failed to stop program')
       throw err
     } finally {
-      setStoppingProcesses(prev => {
+      setStoppingPrograms(prev => {
         const newSet = new Set(prev)
         newSet.delete(name)
         return newSet
@@ -148,40 +130,40 @@ export function usePrograms() {
     }
   }
 
-  const restartProcess = async (name: string) => {
+  const restartProgram = async (name: string) => {
     // Mark restarting (also mark as starting/stopping to disable both buttons)
-    setRestartingProcesses(prev => new Set(prev).add(name))
-    setStoppingProcesses(prev => new Set(prev).add(name))
-    setStartingProcesses(prev => new Set(prev).add(name))
+    setRestartingPrograms(prev => new Set(prev).add(name))
+    setStoppingPrograms(prev => new Set(prev).add(name))
+    setStartingPrograms(prev => new Set(prev).add(name))
     try {
       // Stop
       await apiClient.stopProgram(name)
       // Wait for supervisor to settle
       await new Promise(resolve => setTimeout(resolve, 2000))
       // Update row after stop
-      await refreshProcess(name)
+      await refreshProgram(name)
 
       // Start
       await apiClient.startProgram(name)
       // Wait again for start
       await new Promise(resolve => setTimeout(resolve, 2000))
       // Update row after start
-      await refreshProcess(name)
+      await refreshProgram(name)
     } catch (err: any) {
-      setError(err.message || 'Failed to restart process')
+      setError(err.message || 'Failed to restart program')
       throw err
     } finally {
-      setRestartingProcesses(prev => {
+      setRestartingPrograms(prev => {
         const newSet = new Set(prev)
         newSet.delete(name)
         return newSet
       })
-      setStoppingProcesses(prev => {
+      setStoppingPrograms(prev => {
         const newSet = new Set(prev)
         newSet.delete(name)
         return newSet
       })
-      setStartingProcesses(prev => {
+      setStartingPrograms(prev => {
         const newSet = new Set(prev)
         newSet.delete(name)
         return newSet
@@ -190,15 +172,15 @@ export function usePrograms() {
   }
 
   return {
-    processes,
+    programs,
     loading,
     error,
-    fetchProcesses,
-    startProcess,
-    stopProcess,
-    restartProcess,
-    startingProcesses,
-    stoppingProcesses,
-    restartingProcesses,
+    fetchPrograms,
+    startProgram,
+    stopProgram,
+    restartProgram,
+    startingPrograms,
+    stoppingPrograms,
+    restartingPrograms,
   }
 }

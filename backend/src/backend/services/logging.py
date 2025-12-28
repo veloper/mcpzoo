@@ -1,8 +1,11 @@
-import logging
-import sys
+import logging, sys
+
+from functools import lru_cache
+
 
 _logger: logging.Logger | None = None
 
+Logger = logging.Logger # exportable type alias
 
 def get_logger() -> logging.Logger:
     """Get or create the singleton logger instance."""
@@ -29,3 +32,8 @@ def get_logger() -> logging.Logger:
 
 
 logger = get_logger()
+
+@lru_cache()
+def get_logging_service() -> logging.Logger:
+    """Dependency for FastAPI to inject the logger."""
+    return get_logger()

@@ -114,7 +114,7 @@ function ProcessRow({ proc, onViewLogs, onStart, onStop, onRestart, isStarting, 
 }
 
 export function ProgramsList() {
-  const { processes: allProcesses, loading, error, startProcess, stopProcess, restartProcess, fetchProcesses, startingProcesses, stoppingProcesses, restartingProcesses } = usePrograms()
+  const { programs: allProcesses, loading, error, startProgram, stopProgram, restartProgram, fetchPrograms, startingPrograms, stoppingPrograms, restartingPrograms } = usePrograms()
   const [logsDialogOpen, setLogsDialogOpen] = React.useState(false)
   const [selectedProcess, setSelectedProcess] = React.useState<string | null>(null)
   const [processLogs, setProcessLogs] = React.useState<string[]>([])
@@ -162,7 +162,7 @@ export function ProgramsList() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => fetchProcesses(true)}
+          onClick={() => fetchPrograms()}
           disabled={loading}
         >
           {loading ? (
@@ -174,7 +174,7 @@ export function ProgramsList() {
         </Button>
       </div>
 
-      {allProcesses.length === 0 ? (
+      {allProcesses.filter(proc => proc && proc.name).length === 0 ? (
         <Alert>
           <AlertDescription>
             No processes running.
@@ -193,17 +193,17 @@ export function ProgramsList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allProcesses.map((proc) => (
+              {allProcesses.filter(proc => proc && proc.name).map((proc) => (
                 <ProcessRow
                   key={proc.name}
                   proc={proc}
                   onViewLogs={handleViewLogs}
-                  onStart={startProcess}
-                  onStop={stopProcess}
-                  onRestart={restartProcess}
-                  isStarting={startingProcesses.has(proc.name)}
-                  isStopping={stoppingProcesses.has(proc.name)}
-                  isRestarting={restartingProcesses.has(proc.name)}
+                  onStart={startProgram}
+                  onStop={stopProgram}
+                  onRestart={restartProgram}
+                  isStarting={startingPrograms.has(proc.name)}
+                  isStopping={stoppingPrograms.has(proc.name)}
+                  isRestarting={restartingPrograms.has(proc.name)}
                 />
               ))}
             </TableBody>

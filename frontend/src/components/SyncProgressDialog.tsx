@@ -54,7 +54,8 @@ export function SyncProgressDialog({ isOpen, taskId, onClose }: SyncProgressDial
 
     const fetchLogs = async () => {
       try {
-        const data = await apiClient.getSyncLogs(taskId, 50)
+        // Pass tail=0 to get all logs instead of just the last 50 lines
+        const data = await apiClient.getSyncLogs(taskId, 0)
         setLogs(data.logs)
       } catch (error) {
         console.error('Error fetching logs:', error)

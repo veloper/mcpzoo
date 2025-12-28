@@ -1,17 +1,22 @@
 import traceback
 
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from src.backend.auth import verify_token
+from src.backend.request_response_models import HomeResponse, HomeSummary
 from src.backend.routers import auth, processes, programs, servers, sync, tools
+from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
+from src.backend.services.supervisor import SupervisorService, get_supervisor_service
 from src.backend.settings import get_settings
 
+
+settings = get_settings()
 
 app = FastAPI(title="MCPZoo", version="0.1.0", debug=True)
 
@@ -56,7 +61,11 @@ async def health_check():
 
 
 @app.get("/home")
-async def home(username: Optional[str] = None):
+async def home(
+    username: Optional[str] = None,
+    db_service: DatabaseService = Depends(get_database_service),
+    srv: SupervisorService = Depends(get_supervisor_service),
+):
     """Home page metadata with installed servers summary and statuses.
 
     Returns:
@@ -67,33 +76,26 @@ async def home(username: Optional[str] = None):
     """
     logger.info("Home endpoint called")
     try:
-        from src.backend.services.database import database_service
-        from src.backend.services.supervisord import supervisord_service
+        db = db_service.get_db()
+        servers_list = db.get_all_servers()
+        
+        programs = srv.get_all_programs()
+        
+        running_count = sum(1 for p in programs if p.is_running)
 
-        logger.debug("Getting servers from database...")
-        with database_service as db:
-            servers_list = db.get_all_servers()
-        logger.debug(f"Found {len(servers_list)} servers")
-
-        logger.debug("Getting programs from supervisord...")
-        programs = await supervisord_service.get_all_programs()
-        logger.debug(f"Found {len(programs)} programs")
-
-        running_count = sum(1 for p in programs if p.process and p.process.state.value == "RUNNING")
-        logger.info(f"Home endpoint returning {len(servers_list)} servers, {running_count} running processes")
-
-        return {
-            "name": "MCPZoo",
-            "version": "0.1.0",
-            "description": "MCP Server Management",
-            "summary": {
-                "total_servers": len(servers_list),
-                "running_processes": running_count,
-                "total_processes": len(programs),
-            },
-            "servers": servers_list,
-            "processes": [p.model_dump() for p in programs],
-        }
+        response = HomeResponse(
+            name="MCPZoo",
+            version="0.1.0",
+            description="MCP Server Management",
+            summary=HomeSummary(
+                total_servers=len(servers_list),
+                running_processes=running_count,
+                total_processes=len(programs),
+            ),
+            servers=servers_list,
+            processes=[p.model_dump() for p in programs],
+        )
+        return response
     except Exception as e:
         logger.error(f"Error in home endpoint: {str(e)}")
         raise
@@ -106,7 +108,6 @@ if static_path.exists():
 
 
 
-settings = get_settings()
 
 if __name__ == "__main__":
     import uvicorn

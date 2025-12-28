@@ -6,12 +6,12 @@ import { Loader2 } from 'lucide-react'
 
 export function HomePage() {
   const { servers, loading: serversLoading } = useServers()
-  const { processes, loading: processesLoading } = usePrograms()
+  const { programs, loading: programsLoading } = usePrograms()
 
-  const runningProcesses = processes.filter(p => p.status === 'RUNNING').length
+  const runningProcesses = programs.filter(p => p.status === 'RUNNING').length
   const totalServers = servers.length
 
-  if (serversLoading || processesLoading) {
+  if (serversLoading || programsLoading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
