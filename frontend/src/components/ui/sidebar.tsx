@@ -10,7 +10,6 @@ import {
   Activity,
   Cpu,
   RefreshCw,
-  Settings,
   LogOut
 } from 'lucide-react'
 
@@ -55,18 +54,7 @@ export function Sidebar({ className }: SidebarProps) {
             })}
           </div>
         </div>
-        <Separator />
-        <div className="px-3 py-2">
-          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
-            Settings
-          </h2>
-          <div className="space-y-1">
-            <Button variant="ghost" className="w-full justify-start">
-              <Settings className="mr-2 h-4 w-4" />
-              Configuration
-            </Button>
-          </div>
-        </div>
+
       </div>
     </div>
   )

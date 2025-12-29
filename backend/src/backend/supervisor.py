@@ -61,24 +61,24 @@ class SupervisorProcessState(str, Enum):
 
 class SupervisorProcess(BaseModel):
     """Typed model representing xmlrpc.supervisor.getProcessInfo() or getAllProcessInfo() response for individual process information.
-    
+
     {
-        'name': 'context7', 
-        'group': 'context7', 
-        'start': 1766856158, 
-        'stop': 0, 
-        'now': 1766892175, 
-        'state': 20, 
-        'statename': 'RUNNING', 
-        'spawnerr': '', 
-        'exitstatus': 0, 
-        'logfile': '/var/log/supervisor/mcp_context7_stdout.log', 
-        'stdout_logfile': '/var/log/supervisor/mcp_context7_stdout.log', 
-        'stderr_logfile': '', 
-        'pid': 207, 
+        'name': 'context7',
+        'group': 'context7',
+        'start': 1766856158,
+        'stop': 0,
+        'now': 1766892175,
+        'state': 20,
+        'statename': 'RUNNING',
+        'spawnerr': '',
+        'exitstatus': 0,
+        'logfile': '/var/log/supervisor/mcp_context7_stdout.log',
+        'stdout_logfile': '/var/log/supervisor/mcp_context7_stdout.log',
+        'stderr_logfile': '',
+        'pid': 207,
         'description': 'pid 207, uptime 10:00:17'
         }
-    
+
     """
     model_config = ConfigDict()
 
@@ -121,8 +121,10 @@ class SupervisorProcess(BaseModel):
         }
         return state_map.get(self.state, SupervisorProcessState.UNKNOWN)
     
+    @computed_field(description="Whether the process is currently running")
     @property
-    def is_running(self) -> bool: return self.state_enum == SupervisorProcessState.RUNNING
+    def is_running(self) -> bool:
+        return self.state_enum == SupervisorProcessState.RUNNING
     
     @property
     def is_stopped(self) -> bool: return self.state_enum == SupervisorProcessState.STOPPED

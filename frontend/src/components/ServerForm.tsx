@@ -102,6 +102,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
   const [error, setError] = useState('')
   const [originalServer, setOriginalServer] = useState<any>(null)
   const [initialFormHash, setInitialFormHash] = useState<string>('')
+  const [loaded, setLoaded] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   // Simple hash function for form state comparison
@@ -286,6 +287,12 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
           setLogLevel(server.log_level || 'INFO')
 
           console.log('Server data loaded successfully')
+
+          // Set initial hash after all data is loaded
+          setInitialFormHash(hashFormState())
+
+          // Mark as loaded
+          setLoaded(true)
         } catch (err: any) {
           console.error('Failed to load server - detailed error:', err)
           console.error('Error stack:', err.stack)
@@ -300,13 +307,7 @@ export function ServerForm({ onSuccess, onCancel, editingId }: ServerFormProps) 
     }
   }, [editingId])
 
-  // Set initial hash after form state is loaded
-  useEffect(() => {
-    if (editingId && !initialFormHash && name) {
-      // Only set initial hash when we have loaded data and name is set
-      setInitialFormHash(hashFormState())
-    }
-  }, [editingId, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, taskInstall, taskUninstall, envVars, tools, logLevel, initialFormHash])
+
 
   const handleNameChange = (value: string) => {
     setName(value)

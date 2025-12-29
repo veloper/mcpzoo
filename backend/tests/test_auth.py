@@ -4,17 +4,15 @@ import pytest
 from fastapi.testclient import TestClient
 from src.backend.main import app
 
-client = TestClient(app)
 
-
-def test_health_check():
+def test_health_check(client: TestClient):
     """Test health endpoint."""
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
 
-def test_login_success():
+def test_login_success(client: TestClient):
     """Test successful login."""
     response = client.post(
         "/api/auth/login",
@@ -25,7 +23,7 @@ def test_login_success():
     assert response.json()["token_type"] == "bearer"
 
 
-def test_login_failure():
+def test_login_failure(client: TestClient):
     """Test failed login with wrong password."""
     response = client.post(
         "/api/auth/login",
@@ -34,7 +32,7 @@ def test_login_failure():
     assert response.status_code == 401
 
 
-def test_login_missing_fields():
+def test_login_missing_fields(client: TestClient):
     """Test login with missing username."""
     response = client.post(
         "/api/auth/login",
@@ -43,7 +41,7 @@ def test_login_missing_fields():
     assert response.status_code in [400, 422]
 
 
-def test_verify_token():
+def test_verify_token(client: TestClient):
     """Test token verification."""
     # First login
     login_response = client.post(
@@ -52,7 +50,7 @@ def test_verify_token():
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
-    
+
     # Then verify
     headers = {"Authorization": f"Bearer {token}"}
     response = client.get("/api/auth/verify", headers=headers)
@@ -60,20 +58,20 @@ def test_verify_token():
     assert "username" in response.json()
 
 
-def test_verify_invalid_token():
+def test_verify_invalid_token(client: TestClient):
     """Test verification with invalid token."""
     headers = {"Authorization": "Bearer invalid_token"}
     response = client.get("/api/auth/verify", headers=headers)
     assert response.status_code in [401, 403]
 
 
-def test_protected_endpoint_without_token():
+def test_protected_endpoint_without_token(client: TestClient):
     """Test accessing protected endpoint without token."""
     response = client.get("/api/servers")
     assert response.status_code == 403
 
 
-def test_auth_workflow():
+def test_auth_workflow(client: TestClient):
     """Test complete auth workflow."""
     # Login
     login_response = client.post(
@@ -82,12 +80,12 @@ def test_auth_workflow():
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
-    
+
     # Verify
     headers = {"Authorization": f"Bearer {token}"}
     verify_response = client.get("/api/auth/verify", headers=headers)
     assert verify_response.status_code == 200
-    
+
     # Access protected endpoint
     servers_response = client.get("/api/servers", headers=headers)
     assert servers_response.status_code == 200

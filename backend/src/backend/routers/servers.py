@@ -116,7 +116,7 @@ async def update_server(
     transport = server_dict.get("transport")
     if transport:
         logger.info("Auto-assigning port for update")
-        server_dict["port"] = port_manager.get_next_available_port_for_update(server_id)
+        server_dict["port"] = port_manager.get_next_mcp_server_available_port()
 
         db.update_server(server_id, server_dict)
     return {"id": server_id, **server_dict}
@@ -310,7 +310,7 @@ async def get_server_files(
         server_config = Server(**config_data)
 
         # Directory 
-        directory = ServerDirectory.from_server_config(server_config)
+        directory = server_config.get_server_directory()
 
 
         # Create file generators

@@ -16,7 +16,7 @@ async def start_sync(
     sync_service: SyncService = Depends(get_sync_service),
 ):
     """Start a new background sync task.
-    
+
     Returns:
         task_id: Unique identifier for the sync task
     """
@@ -35,26 +35,26 @@ async def start_sync(
 
 @router.get("/{task_id}", response_model=dict)
 async def get_sync_status(
-    task_id: str,
+    task_id: int,
     username: str = Depends(verify_token),
     sync_service: SyncService = Depends(get_sync_service),
 ):
     """Get status of a sync task.
-    
+
     Returns:
         Task status, progress, timestamps, and current operation
     """
     logger.info(f"get_sync_status called by user: {username} for task: {task_id}")
     try:
         task = await sync_service.get_task(task_id)
-        
+
         if not task:
             logger.warning(f"Task not found: {task_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Task not found",
             )
-        
+
         logger.info(f"Retrieved task {task_id}: {task.get('status')}")
         return task
     except HTTPException:
@@ -96,18 +96,40 @@ async def list_syncs(
         )
 
 
+@router.delete("", response_model=dict)
+async def clear_all_sync_tasks(
+    username: str = Depends(verify_token),
+    sync_service: SyncService = Depends(get_sync_service),
+):
+    """Clear all sync tasks from the database.
+
+    Returns:
+        Number of tasks deleted
+    """
+    logger.info(f"clear_all_sync_tasks called by user: {username}")
+    try:
+        count = await sync_service.clear_all_tasks()
+        logger.info(f"Cleared {count} sync tasks")
+        return {"deleted_count": count, "message": f"Successfully cleared {count} sync tasks"}
+    except Exception as e:
+        logger.error(f"Error clearing sync tasks: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear sync tasks: {str(e)}",
+        )
+
 @router.get("/{task_id}/logs", response_model=dict)
 async def get_sync_logs(
-    task_id: str,
+    task_id: int,
     tail: int = 100,
     username: str = Depends(verify_token),
     sync_service: SyncService = Depends(get_sync_service),
 ):
     """Get logs for a sync task.
-    
+
     Query Parameters:
         tail: Number of lines to return from end of file (default: 100)
-    
+
     Returns:
         Log content
     """
@@ -120,7 +142,7 @@ async def get_sync_logs(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Task not found",
             )
-        
+
         logs = await sync_service.get_task_logs(task_id, tail=tail)
         logger.info(f"Retrieved logs for task {task_id}")
         return {"task_id": task_id, "logs": logs}

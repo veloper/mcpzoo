@@ -71,3 +71,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+def clear_settings_cache() -> None:
+    """Clear the settings cache. Useful for testing."""
+    get_settings.cache_clear()

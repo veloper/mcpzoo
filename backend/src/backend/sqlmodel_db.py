@@ -82,7 +82,7 @@ class Database:
             return False
 
     # SyncTask methods
-    def insert_sync_task(self, task_data: Dict[str, Any]) -> str:
+    def insert_sync_task(self, task_data: Dict[str, Any]) -> int | None:
         """Insert sync task."""
         with self.get_session() as session:
             task = SyncTask(**task_data)
@@ -91,7 +91,7 @@ class Database:
             session.refresh(task)
             return task.id
 
-    def get_sync_task(self, task_id: str) -> Optional[Dict]:
+    def get_sync_task(self, task_id: int) -> Optional[Dict]:
         """Get sync task by ID."""
         with self.get_session() as session:
             task = session.get(SyncTask, task_id)
@@ -105,7 +105,7 @@ class Database:
             tasks = session.execute(select(SyncTask)).scalars().all()
             return [task.model_dump() for task in tasks]
 
-    def update_sync_task(self, task_id: str, data: Dict[str, Any]) -> bool:
+    def update_sync_task(self, task_id: int, data: Dict[str, Any]) -> bool:
         """Update sync task."""
         with self.get_session() as session:
             task = session.get(SyncTask, task_id)
@@ -116,7 +116,7 @@ class Database:
                 return True
             return False
 
-    def delete_sync_task(self, task_id: str) -> bool:
+    def delete_sync_task(self, task_id: int) -> bool:
         """Delete sync task."""
         with self.get_session() as session:
             task = session.get(SyncTask, task_id)
@@ -125,6 +125,16 @@ class Database:
                 session.commit()
                 return True
             return False
+
+    def delete_all_sync_tasks(self) -> int:
+        """Delete all sync tasks. Returns the number of tasks deleted."""
+        with self.get_session() as session:
+            # Get count before deletion
+            count = session.query(SyncTask).count()
+            # Delete all tasks
+            session.query(SyncTask).delete()
+            session.commit()
+            return count
 
     def close(self):
         """Close database."""

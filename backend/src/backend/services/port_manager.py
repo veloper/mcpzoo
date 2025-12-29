@@ -16,18 +16,18 @@ class PortManagerService(BaseModel):
     """Service for managing MCP server port assignments."""
     model_config = {"arbitrary_types_allowed": True}
 
-
-    db_service: DatabaseService 
-    logger : Logger
+    db_service: DatabaseService
+    logger: Logger
     port_range: range = Field(default=range(7998, 8199))
-    
+
     dedicated_port_range: range = Field(default=range(7998, 8010))
     mcp_server_port_range: range = Field(default=range(8011, 8199))
    
 
     def get_taken_mcp_server_ports(self) -> set[int]:
         """Get all ports currently taken by existing MCP servers."""
-        db = self._db_service.get_db()
+        # Use the public db_service property
+        db = self.db_service.get_db()
         existing_servers = db.get_all_servers()
 
         taken_ports = set()
@@ -56,9 +56,15 @@ class PortManagerService(BaseModel):
         if not available_ports:
             self.logger.error("No available MCP server ports in range")
             raise Exception("No available MCP server ports in range")
-        
+
         next_port = min(available_ports)
-        return next_port 
+        return next_port
+
+    def get_next_available_port_for_update(self, server_id: str) -> int:
+        """Get the next available port for updating a server."""
+        # For updates, we can reuse the same logic as creating new servers
+        # since we want to ensure the port is available
+        return self.get_next_mcp_server_available_port() 
 
 
 @lru_cache()

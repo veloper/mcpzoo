@@ -14,7 +14,6 @@ src/backend/request_response_models.py
 src/backend/settings.py
 src/backend/sqlmodel_db.py
 src/backend/supervisor.py
-src/backend/tinydb.py
 src/backend/routers/__init__.py
 src/backend/routers/auth.py
 src/backend/routers/processes.py
@@ -25,8 +24,10 @@ src/backend/routers/tools.py
 src/backend/services/__init__.py
 src/backend/services/database.py
 src/backend/services/logging.py
+src/backend/services/mise.py
+src/backend/services/port_manager.py
 src/backend/services/processes.py
-src/backend/services/supervisord.py
+src/backend/services/supervisor.py
 src/backend/services/sync.py
 src/backend/utils/__init__.py
 src/backend/utils/shell.py
@@ -36,5 +37,10 @@ src/mcpzoo_backend.egg-info/dependency_links.txt
 src/mcpzoo_backend.egg-info/requires.txt
 src/mcpzoo_backend.egg-info/top_level.txt
 tests/test_auth.py
+tests/test_home.py
+tests/test_processes.py
+tests/test_programs.py
 tests/test_servers.py
 tests/test_services.py
+tests/test_sync.py
+tests/test_tools.py

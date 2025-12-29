@@ -8,57 +8,49 @@
 
 ---
 
-## MCPZoo Task CLI Tool Explainer
+## MCPZoo Tasks CLI Commands Explanation
 
-**Overview**: The task CLI tool is a development task runner for the MCPZoo project, designed to manage full-stack operations (backend, frontend, Docker) without directly running servers for testing. It enforces safe, idempotent workflows. All commands are executed from the project root. Use task (or task if aliased).
+This Markdown document explains the commands implemented in the `tasks` CLI tool (Python script), aligned with the .clinerules file structure: `./tasks ENV NAMESPACE COMMAND [ARGS...] [--help]`. Commands are registered via decorators, with namespaces inferred from function names (e.g., `dev__env__start` → `dev env start`). The tool uses subprocess and execve for execution, focusing on environment management without direct server testing. Below, commands are grouped by namespace, with implementation notes for LLM parsing.
 
-**Key Principles**:
-- Idempotent where noted: Run multiple times safely.
-- Backend operations run inside a Docker container.
-- Avoid manual server starts; use the tool for controlled execution.
-- Examples are runnable; adapt paths as needed.
+## Dev Namespace (Development Environment Management)
+Manages the dev environment via overmind (process manager), ensuring idempotent operations and log handling.
 
-### Development Environment Control
-- **`./task dev env start`**: Start the development environment using the Procfile and overmind. This is an idempotent command that can be run multiple times to ensure the development environment is up and running. By default, runs in the background (non-blocking). Use --no-daemon to run in foreground. Logs are written to /tmp/mcpzoo-overmind.log.
-  *Examples*:
-  `task dev env start`
-  `task dev env start --no-daemon`
+- `dev env start [--no-daemon]`  
+  Starts the dev environment using overmind and a Procfile. Checks for running processes, cleans up sockets, and logs to mcpzoo-overmind.log. Default: background mode; `--no-daemon` for foreground. No servers started.
 
-- **`./task dev env stop`**: Stop the development environment by terminating the overmind process.
-  *Example*: `task dev env stop`
+- `dev env stop`  
+  Terminates overmind to stop the dev environment. Simple subprocess call.
 
-- **`./task dev env restart`**: Restart the development environment using overmind restart.
-  *Example*: `task dev env restart`
+- `dev env restart`  
+  Restarts via overmind restart. Assumes running state.
 
-- **`./task dev env status`**: Check the status of the development environment using overmind status.
-  *Example*: `task dev env status`
+- `dev env status`  
+  Checks overmind status; outputs process info or suggests starting.
 
-- **`./task dev env logs`**: View the logs of the development environment. By default, shows a tail of the log file. Use --follow to follow logs in real-time.
-  *Examples*:
-  `task dev env logs`
-  `task dev env logs --follow`
+- `dev env logs [--follow]`  
+  Views logs from mcpzoo-overmind.log. Tails by default; `--follow` streams via overmind.
 
-### Development Builds & Operations
-- **`./task dev backend exec`**: Execute an arbitrary command inside the backend Docker container.
-  *Examples*:
-  `task dev backend exec bash`
-  `task dev backend exec ls /backend`
+## Backend Namespace
+Implements shell command execution inside Docker containers.
 
-- **`./task dev frontend build`**: Build the frontend using the local npm build process. Additional options are passed through to npm run build.
-  *Example*: `task dev frontend build`
+- `dev backend exec [BASH_COMMAND]`  
+  Runs arbitrary commands in the backend container (`mcpzoo-dev`) using `docker exec -it`.
 
-- **`./task dev frontend dev`**: Start the frontend development server using npm. Additional options are passed through to npm run dev.
-  *Example*: `task dev frontend dev`
+## Frontend Namespace
+Handles local builds and dev servers (use dev servers only if explicitly requested).
 
-- **`./task dev docker build`**: Build the Docker image for MCPZoo using DOCKER_FILE_DEV. Additional options are passed through to docker build.
-  *Examples*:
-  `task dev docker build`
-  `task dev docker build --no-cache`
+- `dev frontend build [ARGS...]`  
+  Builds frontend with `npm run build` in frontend dir, passing args.
 
-### Production Builds & Operations
-- **`./task prod docker build`**: Build production artifacts and Docker image for MCPZoo. This builds the frontend/dist and creates the production Docker image. Additional options are passed through to docker build. After building, run the container with: docker run -p 7998-8199:7998-8199 -e APP_USERNAME=admin -e APP_PASSWORD=changeme123 mcpzoo. Access the application at: http://localhost:7999.
-  *Examples*:
-  `task prod docker build`
-  `task prod docker build --no-cache`
+- `dev frontend dev [ARGS...]`  
+  Starts dev server with `npm run dev`. Avoid for testing per rules.
 
-**Usage Tips**: Always ensure Docker is running for backend/docker commands. For frontend, npm must be installed locally. If commands fail, check container status or logs.
+## Docker Namespace
+Builds images, with production including full artifact prep.
+
+- `dev docker build [ARGS...]`  
+  Builds dev image (`mcpzoo-dev`) from `Dockerfile.development`.
+
+- `prod docker build [ARGS...]`  
+  Builds prod image (`mcpzoo`) after frontend build and backend sync. Includes run instructions.
+

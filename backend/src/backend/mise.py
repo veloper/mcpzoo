@@ -26,7 +26,7 @@ class MiseTool(BaseModel):
 
 
 
-class MiseTomlFile(BaseModel):
+class MiseToml(BaseModel):
     """mise.toml configuration file for MCP server."""
 
     envs: Dict[str, str] = Field(default_factory=dict, description="Environment variables")
@@ -83,22 +83,6 @@ class MiseTomlFile(BaseModel):
     def has_env(self, key: str) -> bool:
         return key in self.envs
 
-    @classmethod
-    def from_mcp_server_config(cls, config: Server) -> "MiseTomlFile":
-        """Create MiseTomlFile from MCPServerConfig, extracting and transforming relevant fields."""
-        tasks = {}
-        if config.task_install:
-            tasks["install"] = config.task_install
-        if config.task_uninstall:
-            tasks["uninstall"] = config.task_uninstall
-
-
-
-        return cls(
-            envs=config.envs,
-            tools=config.tools,
-            tasks=tasks
-        )
 
     def __str__(self) -> str:
         file = []

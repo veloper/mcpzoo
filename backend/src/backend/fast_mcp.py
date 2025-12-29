@@ -17,14 +17,6 @@ class FastMcpServerProxyServerFile(BaseModel):
     server_name: str = Field(description="Name of the MCP server")
     json_file_path: str = Field(description="Path to mcpServers.json configuration file")
 
-    @classmethod
-    def from_mcp_server_config(cls, config: Server, json_file_path: str) -> "FastMcpServerProxyServerFile":
-        """Create FastMcpServerProxyServerFile from MCPServerConfig, extracting relevant fields."""
-        return cls(
-            server_name=config.name,
-            json_file_path=json_file_path
-        )
-
     def __str__(self) -> str:
         config_path = Path(self.json_file_path).resolve().as_posix()
         return dedent(f"""

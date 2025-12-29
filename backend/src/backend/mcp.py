@@ -1,54 +1,56 @@
 from __future__ import annotations
 
-import json
-
-from typing import TYPE_CHECKING, Any, Dict, List
+from enum import Enum
+from typing import Annotated, Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field, model_serializer
 from src.backend.enums import MCPServerTransport
 
 
-if TYPE_CHECKING:
-    from src.backend.models import Server
+class MCPServerTransports(Enum):
+    """MCP server transport types."""
+    STDIO = "stdio"
+    HTTP  = "http"
+    SSE   = "sse"
 
+class MCPServerJsonEntryBase(BaseModel):
+    """MCP server entry in mcpServers.json configuration file."""
 
-class McpServersJsonFile(BaseModel):
-    """MCP servers configuration file model."""
+    transport: MCPServerTransport = Field(description="Transport type of the MCP server")
 
-    servers_dict: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Compiled mcpServers configuration dictionary")
+class MCPServerJsonEntryStdIO(MCPServerJsonEntryBase):
+    """MCP server entry for STDIO transport."""
 
-    @classmethod
-    def from_mcp_server_configs(cls, configs: List[Server]) -> "McpServersJsonFile":
-        """Create McpServersJsonFile from list of MCPServerConfigs, extracting and transforming relevant fields."""
-        servers_dict = {}
-        for config in configs:
-            # Transport-specific config
-            if config.transport == MCPServerTransport.STDIO:
-                servers_dict[config.name] = {
-                    "type": config.transport,
-                    "command": config.command,
-                    "args": config.arguments
-                }
-            else:
-                servers_dict[config.name] = {
-                    "type": config.transport,
-                    "url": config.url
-                }
+    transport: Literal[MCPServerTransport.STDIO] = MCPServerTransport.STDIO
+    command: List[str] = Field(description="Command to start the MCP server")
+    args: List[str] = Field(default_factory=list, description="Arguments for the command")
+    envs: Dict[str, str] = Field(default_factory=dict, description="Environment variables for the MCP server")
 
-            # Environment variables
-            if config.envs:
-                if "env" not in servers_dict[config.name]:
-                        servers_dict[config.name]["env"] = {}
-                for key, value in config.envs.items():
-                    servers_dict[config.name]["env"][key] = value
+class MCPServerJsonEntryHTTP(MCPServerJsonEntryBase):
+    """MCP server entry for HTTP transport."""
 
-        return cls(servers_dict=servers_dict)
+    transport: Literal[MCPServerTransport.HTTP] = MCPServerTransport.HTTP
+    url: str = Field(description="URL of the MCP server")
+    headers: Dict[str, str] = Field(default_factory=dict, description="HTTP headers for the MCP server")
 
-    @model_serializer()
-    def serialize(self) -> Dict[str, Any]:
-        """Serialize to JSON-compatible dict."""
-        return {"mcpServers": self.servers_dict}
+class MCPServerJsonEntrySSE(MCPServerJsonEntryBase):
+    """MCP server entry for SSE transport."""
+
+    transport: Literal[MCPServerTransport.SSE] = MCPServerTransport.SSE
+    url: str = Field(description="URL of the MCP server")
+    headers: Dict[str, str] = Field(default_factory=dict, description="HTTP headers for the MCP server")
+
+# Discriminated union: transport field selects the class
+MCPServerJsonEntry = Annotated[
+    Union[MCPServerJsonEntryStdIO, MCPServerJsonEntryHTTP, MCPServerJsonEntrySSE],
+    Field(discriminator="transport")
+]
+
+class MCPServersJson(BaseModel):
+    """MCP servers configuration file model (mcpServers.json)."""
+
+    mcp_servers: Dict[str, MCPServerJsonEntry] = Field(default_factory=dict, alias="mcpServers", description="Compiled mcpServers configurations")
 
     def __str__(self) -> str:
         """String representation as JSON."""
-        return json.dumps(self.serialize(), indent=4)
+        return self.model_dump_json(by_alias=True, indent=4)

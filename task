@@ -20,7 +20,6 @@ DOCKER_IMAGE_DEV = "mcpzoo-dev"
 DOCKER_IMAGE_PROD = "mcpzoo"
 DOCKER_CONTAINER_DEV = "mcpzoo-dev"
 DOCKER_CONTAINER_PROD = "mcpzoo"
-DOCKER_CONTAINER = DOCKER_CONTAINER_DEV  # Default for backward compatibility
 BACKEND_DIR = SCRIPT_DIR / "backend"
 FRONTEND_DIR = SCRIPT_DIR / "frontend"
 DOCKER_DIR = SCRIPT_DIR / "docker"
@@ -163,7 +162,7 @@ class CliDecorator:
 cli = CliDecorator(commands=[])
     
 # ======================
-# Commands
+# Dev Commands
 # ======================
 
 @cli.cmd()
@@ -343,7 +342,7 @@ def dev__backend__exec(*args):
     """
     cmd = [
         "docker", "exec", "-it",
-        DOCKER_CONTAINER,
+        DOCKER_CONTAINER_DEV,
         *args
     ]
     os.execvpe(cmd[0], cmd, os.environ)
@@ -400,6 +399,10 @@ def dev__docker__build(*args):
     ]
     os.execvpe(cmd[0], cmd, os.environ)
 
+
+# ======================
+# Production Commands
+# ======================
 
 @cli.cmd()
 def prod__docker__build(*args):

@@ -89,7 +89,9 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
 
 def authenticate_user(username: str, password: str) -> bool:
     """Authenticate user against configured credentials."""
+    from src.backend.settings import get_settings
+    current_settings = get_settings()
     return (
-        username == settings.app_username
-        and password == settings.app_password
+        username == current_settings.app_username
+        and password == current_settings.app_password
     )

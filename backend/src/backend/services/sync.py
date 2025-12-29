@@ -5,7 +5,7 @@ import json, logging, os, subprocess, uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from src.backend.enums import SyncTaskStatus
 from src.backend.models import Server, ServerDirectory, SyncTask
@@ -35,21 +35,17 @@ class SyncService:
             self.LOG_DIR.mkdir(parents=True, exist_ok=True)
             logger.warning(f"Cannot write to /var/log/sync_task, using {self.LOG_DIR} instead")
     
-    async def start_sync(self) -> str | None:
+    async def start_sync(self) -> int | None:
         """Start a new sync task in background.
 
         Returns:
             task_id: Unique identifier for the sync task
         """
-        # Create task ID
-        task_id = str(uuid.uuid4())
-
-        # Create log file path
-        log_file_path = str(self.LOG_DIR / f"{task_id}.log")
+        # Create log file path (will be updated with actual ID after insertion)
+        log_file_path = str(self.LOG_DIR / "temp.log")
 
         # Create task record in database
         task = SyncTask(
-            id=task_id,
             status=SyncTaskStatus.PENDING,
             created_at=datetime.now(timezone.utc),
             log_file_path=log_file_path,
@@ -57,7 +53,11 @@ class SyncService:
         )
 
         db = get_database_service().get_db()
-        db.insert_sync_task(task.model_dump())
+        task_id = db.insert_sync_task(task.model_dump())
+
+        # Update log file path with actual ID
+        actual_log_file_path = str(self.LOG_DIR / f"{task_id}.log")
+        db.update_sync_task(task_id, {"log_file_path": actual_log_file_path})
 
         logger.info(f"Created sync task: {task_id}")
 
@@ -67,7 +67,7 @@ class SyncService:
         if pid == 0:
             # Child process - run sync logic
             try:
-                self._run_sync_child(task_id, log_file_path)
+                self._run_sync_child(task_id, actual_log_file_path)
             except Exception as e:
                 logger.error(f"Sync child process error: {e}")
                 exit(1)
@@ -76,7 +76,7 @@ class SyncService:
             logger.info(f"Forked sync task {task_id} with PID {pid}")
             return task_id
     
-    def _run_sync_child(self, task_id: str, log_file_path: str) -> None:
+    def _run_sync_child(self, task_id: int, log_file_path: str) -> None:
         """Child process that runs the actual sync.
         
         Args:
@@ -116,7 +116,7 @@ class SyncService:
             )
             
             # Load McpDirectory objects for each server (same as servers.py endpoint)
-            directories = []
+            directories : List[ServerDirectory] = []
             synced_servers = []
             
             self._update_task_status(
@@ -127,7 +127,7 @@ class SyncService:
             for idx, server_data in enumerate(servers):
                 try:
                     server_config = Server(**server_data)
-                    directory = ServerDirectory.from_server_config(server_config)
+                    directory = server_config.get_server_directory()
                     directories.append(directory)
                     
                     # Update synced_at timestamp
@@ -256,7 +256,7 @@ class SyncService:
             
             exit(1)
     
-    def _create_task_logger(self, task_id: str, log_file_path: str) -> logging.Logger:
+    def _create_task_logger(self, task_id: int, log_file_path: str) -> logging.Logger:
         """Create a dedicated logger for a sync task that writes to the task's log file.
         
         Args:
@@ -297,7 +297,7 @@ class SyncService:
     
     def _update_task_status(
         self,
-        task_id: str,
+        task_id: int,
         status: Optional[SyncTaskStatus] = None,
         progress: Optional[int] = None,
         current_step: Optional[str] = None,
@@ -347,7 +347,7 @@ class SyncService:
         except Exception as e:
             logger.error(f"Failed to update task status: {e}")
     
-    async def get_task(self, task_id: str) -> Optional[dict]:
+    async def get_task(self, task_id: int) -> Optional[dict]:
         """Get sync task by ID.
         
         Args:
@@ -396,7 +396,7 @@ class SyncService:
             logger.error(f"Error listing tasks: {e}")
             return {"tasks": [], "total": 0, "limit": limit, "offset": offset}
     
-    async def get_task_logs(self, task_id: str, tail: int = 100) -> str:
+    async def get_task_logs(self, task_id: int, tail: int = 100) -> str:
         """Get logs for a sync task.
 
         Args:
@@ -426,6 +426,21 @@ class SyncService:
         except Exception as e:
             logger.error(f"Error reading logs for {task_id}: {e}")
             return ""
+
+    async def clear_all_tasks(self) -> int:
+        """Clear all sync tasks from the database.
+
+        Returns:
+            Number of tasks deleted
+        """
+        try:
+            db = get_database_service().get_db()
+            count = db.delete_all_sync_tasks()
+            logger.info(f"Cleared {count} sync tasks from database")
+            return count
+        except Exception as e:
+            logger.error(f"Error clearing sync tasks: {e}")
+            raise
 
 
 @lru_cache()

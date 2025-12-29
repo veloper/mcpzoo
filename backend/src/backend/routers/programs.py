@@ -30,7 +30,7 @@ async def start_process(
     srv = Depends(get_supervisor_service),
 ):
     """Start program."""
-    result = await srv.start_program(name)
+    result = srv.start_program(name)
     if not result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -46,7 +46,7 @@ async def stop_process(
     srv = Depends(get_supervisor_service),
 ):
     """Stop program."""
-    if not await srv.stop_program(name):
+    if not srv.stop_program(name):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to stop {name}",
@@ -72,17 +72,9 @@ async def get_process_logs(
     if not server_data:
         raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")
 
-    # Handle migration from old nested supervisor_conf to new flat structure
-    if 'supervisor_conf' in server_data and isinstance(server_data['supervisor_conf'], dict):
-        supervisor_conf = server_data.pop('supervisor_conf')
-        # Flatten the nested supervisor_conf fields into the main data
-        for key, value in supervisor_conf.items():
-            if key not in server_data:  # Don't overwrite existing fields
-                server_data[key] = value
-
-    # Convert to ServerConfiguration to access supervisor config
+    # Convert to Server to access supervisor config
     server_config = Server(**server_data)
-    supervisor_conf = server_config.supervisor_conf
+    supervisor_conf = server_config.get_supervisor_conf()
 
     # Get log file paths from supervisor config
     stdout_logfile = supervisor_conf.stdout_logfile
@@ -153,13 +145,27 @@ async def process_status(
     srv = Depends(get_supervisor_service),
 ):
     """Get program status."""
-    prog = await srv.get_program_status(name)
-    if not prog:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Program {name} not found",
-        )
-    return prog.model_dump()
+    try:
+        prog = srv.get_process_info(name)
+        if not prog:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Program {name} not found",
+            )
+        return prog.model_dump()
+    except RuntimeError as e:
+        # Handle cases where supervisor raises RuntimeError for non-existent processes
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Program {name} not found",
+            ) from e
+        else:
+            # Re-raise other RuntimeErrors as internal server errors
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get program status: {str(e)}",
+            ) from e
 
 @router.put("/reread_config")
 async def reread_config(
