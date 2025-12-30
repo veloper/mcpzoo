@@ -5,18 +5,15 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Copy, FileText, Loader2 } from 'lucide-react'
 import { useServers } from '@/hooks/useServers'
-
-interface FilesTabProps {
-  serverId: string
-  serverConfig?: any
-}
+import { useServerForm } from '../../context/ServerFormContext'
 
 interface ServerFile {
   file_name: string
   file_contents: string
 }
 
-const FilesTabComponent = ({ serverId, serverConfig }: FilesTabProps) => {
+const FilesTabComponent = () => {
+  const { editingId, getCurrentServerConfig } = useServerForm()
   const [files, setFiles] = useState<Record<string, string> | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,13 +21,14 @@ const FilesTabComponent = ({ serverId, serverConfig }: FilesTabProps) => {
 
   useEffect(() => {
     const loadFiles = async () => {
-      if (!serverId) return
+      if (!editingId) return
 
       setLoading(true)
       setError(null)
 
       try {
-        const response = await fetchServerFiles(serverId, serverConfig)
+        const serverConfig = getCurrentServerConfig()
+        const response = await fetchServerFiles(editingId, serverConfig)
         setFiles(response.files)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load files')
@@ -40,7 +38,7 @@ const FilesTabComponent = ({ serverId, serverConfig }: FilesTabProps) => {
     }
 
     loadFiles()
-  }, [serverId, serverConfig, fetchServerFiles])
+  }, [editingId, getCurrentServerConfig, fetchServerFiles])
 
   const copyToClipboard = async (content: string) => {
     try {

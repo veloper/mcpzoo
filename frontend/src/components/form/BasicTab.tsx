@@ -19,61 +19,48 @@ import {
 } from '@/components/ui/tooltip'
 
 import { X, Plus } from 'lucide-react'
+import { useServerForm } from '../../context/ServerFormContext'
 
-interface BasicTabProps {
-  name: string
-  nameError: string
-  transport: 'stdio' | 'http' | 'sse'
-  command: string
-  url: string
-  args: string[]
-  port: number | null
-  envVars: Record<string, string>
-  envKey: string
-  envValue: string
-  onNameChange: (value: string) => void
-  onTransportChange: (value: string) => void
-  onCommandChange: (value: string) => void
-  onUrlChange: (value: string) => void
-  onArgsChange: (args: string[]) => void
-  onEnvKeyChange: (value: string) => void
-  onEnvValueChange: (value: string) => void
-  onAddEnv: () => void
-  onRemoveEnv: (key: string) => void
-}
-
-export function BasicTab({
-  name,
-  nameError,
-  transport,
-  command,
-  url,
-  args,
-  port,
-  envVars,
-  envKey,
-  envValue,
-  onNameChange,
-  onTransportChange,
-  onCommandChange,
-  onUrlChange,
-  onArgsChange,
-  onEnvKeyChange,
-  onEnvValueChange,
-  onAddEnv,
-  onRemoveEnv,
-}: BasicTabProps) {
+export function BasicTab() {
+  const {
+    name,
+    nameError,
+    transport,
+    command,
+    url,
+    args,
+    port,
+    envVars,
+    envKey,
+    envValue,
+    headers,
+    headerKey,
+    headerValue,
+    handleNameChange,
+    handleTransportChange,
+    handleCommandChange,
+    handleUrlChange,
+    handleArgsChange,
+    handleEnvKeyChange,
+    handleEnvValueChange,
+    handleAddEnv,
+    handleRemoveEnv,
+    handleHeaderKeyChange,
+    handleHeaderValueChange,
+    handleAddHeader,
+    handleRemoveHeader,
+  } = useServerForm()
   const [newArg, setNewArg] = useState('')
 
   const addArgument = () => {
     if (newArg.trim()) {
-      onArgsChange([...args, newArg.trim()])
+      handleArgsChange([...args, newArg.trim()])
       setNewArg('')
     }
   }
 
   const removeArgument = (index: number) => {
-    onArgsChange(args.filter((_, i) => i !== index))
+    handleArgsChange(args.filter((_, i) => i !== index))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -94,7 +81,7 @@ export function BasicTab({
               <Input
                 id="name"
                 value={name}
-                onChange={(e) => onNameChange(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="my-server"
                 className={nameError ? 'border-red-500' : ''}
                 required
@@ -104,7 +91,7 @@ export function BasicTab({
 
             <div className="space-y-2">
               <Label htmlFor="transport">Transport Type *</Label>
-              <Select value={transport} onValueChange={onTransportChange}>
+              <Select value={transport} onValueChange={handleTransportChange}>
                 <SelectTrigger id="transport">
                   <SelectValue placeholder="Select transport" />
                 </SelectTrigger>
@@ -116,6 +103,20 @@ export function BasicTab({
               </Select>
             </div>
 
+            {transport !== 'stdio' && (
+              <div className="space-y-2">
+                <Label htmlFor="url">URL *</Label>
+                <Input
+                  id="url"
+                  type="url"
+                  value={url}
+                  onChange={(e) => handleUrlChange(e.target.value)}
+                  placeholder="http://localhost:8080"
+                  required
+                />
+              </div>
+            )}
+
             {transport === 'stdio' && (
               <>
                 <div className="space-y-2">
@@ -123,7 +124,7 @@ export function BasicTab({
                   <Input
                     id="command"
                     value={command}
-                    onChange={(e) => onCommandChange(e.target.value)}
+                    onChange={(e) => handleCommandChange(e.target.value)}
                     placeholder="python server.py"
                     required
                   />
@@ -162,86 +163,139 @@ export function BasicTab({
 
           {/* Right Column */}
           <div className="space-y-4">
-            {transport !== 'stdio' && (
+            {transport === 'stdio' && (
               <div className="space-y-2">
-                <Label htmlFor="url">URL *</Label>
-                <Input
-                  id="url"
-                  type="url"
-                  value={url}
-                  onChange={(e) => onUrlChange(e.target.value)}
-                  placeholder="http://localhost:8080"
-                  required
-                />
+                <Label>Environment Variables</Label>
+                {Object.entries(envVars).length > 0 && (
+                  <div className="flex flex-col gap-2 mb-2">
+                    {Object.entries(envVars).map(([k, v]) => (
+                      <Badge key={k} variant="secondary" className="flex items-center gap-1 max-w-96 font-mono w-fit">
+                        <Tooltip delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <span className="truncate cursor-help">{k}={v}</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="w-80 p-3">
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium">Key</Label>
+                                <Input
+                                  value={k}
+                                  readOnly
+                                  className="h-7 text-xs font-mono cursor-pointer"
+                                  onClick={(e) => e.currentTarget.select()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium">Value</Label>
+                                <Input
+                                  value={v}
+                                  readOnly
+                                  className="h-7 text-xs font-mono cursor-pointer"
+                                  onClick={(e) => e.currentTarget.select()}
+                                />
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                        <X
+                          className="h-3 w-3 cursor-pointer hover:text-destructive flex-shrink-0"
+                          onClick={() => handleRemoveEnv(k)}
+                        />
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    value={envKey}
+                    onChange={(e) => handleEnvKeyChange(e.target.value)}
+                    placeholder="KEY"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={envValue}
+                    onChange={(e) => handleEnvValueChange(e.target.value)}
+                    placeholder="VALUE"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAddEnv}
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
 
-
-
-            <div className="space-y-2">
-              <Label>Environment Variables</Label>
-              {Object.entries(envVars).length > 0 && (
-                <div className="flex flex-col gap-2 mb-2">
-                  {Object.entries(envVars).map(([k, v]) => (
-                    <Badge key={k} variant="secondary" className="flex items-center gap-1 max-w-96 font-mono w-fit">
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <span className="truncate cursor-help">{k}={v}</span>
-                        </TooltipTrigger>
-                        <TooltipContent className="w-80 p-3">
-                          <div className="space-y-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs font-medium">Key</Label>
-                              <Input
-                                value={k}
-                                readOnly
-                                className="h-7 text-xs font-mono cursor-pointer"
-                                onClick={(e) => e.currentTarget.select()}
-                              />
+            {(transport === 'http' || transport === 'sse') && (
+              <div className="space-y-2">
+                <Label>HTTP Headers</Label>
+                {Object.entries(headers).length > 0 && (
+                  <div className="flex flex-col gap-2 mb-2">
+                    {Object.entries(headers).map(([k, v]) => (
+                      <Badge key={k} variant="secondary" className="flex items-center gap-1 max-w-96 font-mono w-fit">
+                        <Tooltip delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <span className="truncate cursor-help">{k}: {v}</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="w-80 p-3">
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium">Header</Label>
+                                <Input
+                                  value={k}
+                                  readOnly
+                                  className="h-7 text-xs font-mono cursor-pointer"
+                                  onClick={(e) => e.currentTarget.select()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium">Value</Label>
+                                <Input
+                                  value={v}
+                                  readOnly
+                                  className="h-7 text-xs font-mono cursor-pointer"
+                                  onClick={(e) => e.currentTarget.select()}
+                                />
+                              </div>
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs font-medium">Value</Label>
-                              <Input
-                                value={v}
-                                readOnly
-                                className="h-7 text-xs font-mono cursor-pointer"
-                                onClick={(e) => e.currentTarget.select()}
-                              />
-                            </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                      <X
-                        className="h-3 w-3 cursor-pointer hover:text-destructive flex-shrink-0"
-                        onClick={() => onRemoveEnv(k)}
-                      />
-                    </Badge>
-                  ))}
+                          </TooltipContent>
+                        </Tooltip>
+                        <X
+                          className="h-3 w-3 cursor-pointer hover:text-destructive flex-shrink-0"
+                          onClick={() => handleRemoveHeader(k)}
+                        />
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    value={headerKey}
+                    onChange={(e) => handleHeaderKeyChange(e.target.value)}
+                    placeholder="Header-Name"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={headerValue}
+                    onChange={(e) => handleHeaderValueChange(e.target.value)}
+                    placeholder="Header Value"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAddHeader}
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
-              )}
-              <div className="flex gap-2">
-                <Input
-                  value={envKey}
-                  onChange={(e) => onEnvKeyChange(e.target.value)}
-                  placeholder="KEY"
-                  className="flex-1"
-                />
-                <Input
-                  value={envValue}
-                  onChange={(e) => onEnvValueChange(e.target.value)}
-                  placeholder="VALUE"
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={onAddEnv}
-                  size="sm"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </CardContent>

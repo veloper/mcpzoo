@@ -2,20 +2,16 @@ import React from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useServerForm } from '../../context/ServerFormContext'
 
-interface TasksTabProps {
-  taskInstall: string
-  taskUninstall: string
-  onTaskInstallChange: (value: string) => void
-  onTaskUninstallChange: (value: string) => void
-}
+export function TasksTab() {
+  const {
+    taskInstall,
+    taskUninstall,
+    handleTaskInstallChange,
+    handleTaskUninstallChange,
+  } = useServerForm()
 
-export function TasksTab({
-  taskInstall,
-  taskUninstall,
-  onTaskInstallChange,
-  onTaskUninstallChange,
-}: TasksTabProps) {
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
@@ -24,7 +20,7 @@ export function TasksTab({
           <Textarea
             id="taskinstall"
             value={taskInstall}
-            onChange={(e) => onTaskInstallChange(e.target.value)}
+            onChange={(e) => handleTaskInstallChange(e.target.value)}
             placeholder="pip install mcp-server"
             rows={2}
           />
@@ -35,7 +31,7 @@ export function TasksTab({
           <Textarea
             id="taskuninstall"
             value={taskUninstall}
-            onChange={(e) => onTaskUninstallChange(e.target.value)}
+            onChange={(e) => handleTaskUninstallChange(e.target.value)}
             placeholder="pip uninstall mcp-server -y"
             rows={2}
           />

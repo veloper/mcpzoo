@@ -10,40 +10,26 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useServerForm } from '../../context/ServerFormContext'
 
-interface ProcessTabProps {
-  autostart: boolean
-  autorestart: string
-  startsecs: number
-  startretries: number
-  priority: number
-  stopsignal: string
-  stopwaitsecs: number
-  onAutostart: (value: boolean) => void
-  onAutorestart: (value: string) => void
-  onStartsecs: (value: number) => void
-  onStartretries: (value: number) => void
-  onPriority: (value: number) => void
-  onStopsignal: (value: string) => void
-  onStopwaitsecs: (value: number) => void
-}
+export function ProcessTab() {
+  const {
+    autostart,
+    autorestart,
+    startsecs,
+    startretries,
+    priority,
+    stopsignal,
+    stopwaitsecs,
+    handleAutostartChange,
+    handleAutorestartChange,
+    handleStartsecsChange,
+    handleStartretriesChange,
+    handlePriorityChange,
+    handleStopsignalChange,
+    handleStopwaitsecsChange,
+  } = useServerForm()
 
-export function ProcessTab({
-  autostart,
-  autorestart,
-  startsecs,
-  startretries,
-  priority,
-  stopsignal,
-  stopwaitsecs,
-  onAutostart,
-  onAutorestart,
-  onStartsecs,
-  onStartretries,
-  onPriority,
-  onStopsignal,
-  onStopwaitsecs,
-}: ProcessTabProps) {
   return (
     <Card>
       <CardContent className="space-y-6 pt-6">
@@ -56,13 +42,13 @@ export function ProcessTab({
             <Switch
               id="autostart"
               checked={autostart}
-              onCheckedChange={onAutostart}
+              onCheckedChange={handleAutostartChange}
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="autorestart">Autorestart Policy</Label>
-            <Select value={autorestart} onValueChange={onAutorestart}>
+            <Select value={autorestart} onValueChange={handleAutorestartChange}>
               <SelectTrigger id="autorestart">
                 <SelectValue placeholder="Select policy" />
               </SelectTrigger>
@@ -82,7 +68,7 @@ export function ProcessTab({
               id="startsecs"
               type="number"
               value={startsecs}
-              onChange={(e) => onStartsecs(parseInt(e.target.value))}
+              onChange={(e) => handleStartsecsChange(parseInt(e.target.value))}
               min={1}
             />
             <p className="text-xs text-muted-foreground">Seconds before considered started</p>
@@ -94,7 +80,7 @@ export function ProcessTab({
               id="startretries"
               type="number"
               value={startretries}
-              onChange={(e) => onStartretries(parseInt(e.target.value))}
+              onChange={(e) => handleStartretriesChange(parseInt(e.target.value))}
               min={0}
             />
             <p className="text-xs text-muted-foreground">Retries before giving up</p>
@@ -106,20 +92,19 @@ export function ProcessTab({
               id="priority"
               type="number"
               value={priority}
-              onChange={(e) => onPriority(parseInt(e.target.value))}
+              onChange={(e) => handlePriorityChange(parseInt(e.target.value))}
               min={1}
               max={999}
             />
             <p className="text-xs text-muted-foreground">Lower = starts first</p>
           </div>
 
-
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="stopsignal">Stop Signal</Label>
-            <Select value={stopsignal} onValueChange={onStopsignal}>
+            <Select value={stopsignal} onValueChange={handleStopsignalChange}>
               <SelectTrigger id="stopsignal">
                 <SelectValue placeholder="Select signal" />
               </SelectTrigger>
@@ -138,7 +123,7 @@ export function ProcessTab({
               id="stopwaitsecs"
               type="number"
               value={stopwaitsecs}
-              onChange={(e) => onStopwaitsecs(parseInt(e.target.value))}
+              onChange={(e) => handleStopwaitsecsChange(parseInt(e.target.value))}
               min={1}
             />
           </div>

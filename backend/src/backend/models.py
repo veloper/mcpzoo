@@ -64,6 +64,7 @@ class Server(SQLModel, table=True):
     arguments       : list[str]                = Field(sa_column=Column(JSON), default_factory=list, description="Arguments")
     port            : int | None               = Field(default=None, description="Port number for the server")
     envs            : dict[str, str]           = Field(sa_column=Column(JSON), default_factory=dict, description="Environment variables")
+    headers         : dict[str, str]           = Field(sa_column=Column(JSON), default_factory=dict, description="HTTP headers for HTTP/SSE transport")
     tools           : list[ServerTool]         = Field(sa_column=Column(JSON), default_factory=list, description="Tools/languages")
     task_install    : str | None               = Field(default=None, description="Install task command")
     task_uninstall  : str | None               = Field(default=None, description="Uninstall task command")

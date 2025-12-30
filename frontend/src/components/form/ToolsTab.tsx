@@ -6,43 +6,25 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
 import { Loader2, Plus, X } from 'lucide-react'
+import { useServerForm } from '../../context/ServerFormContext'
 
-interface MiseTool {
-  name: string
-  version?: string
-}
+export function ToolsTab() {
+  const {
+    tools,
+    toolName,
+    toolVersion,
+    toolError,
+    toolValid,
+    toolValidating,
+    toolTyping,
+    availableVersions,
+    versionsLoading,
+    handleToolNameChange,
+    handleToolVersionChange,
+    handleAddTool,
+    handleRemoveTool,
+  } = useServerForm()
 
-interface ToolsTabProps {
-  tools: MiseTool[]
-  toolName: string
-  toolVersion: string
-  toolError: string
-  toolValid: boolean | null
-  toolValidating: boolean
-  toolTyping: boolean
-  availableVersions: string[]
-  versionsLoading: boolean
-  onToolNameChange: (value: string) => void
-  onToolVersionChange: (value: string) => void
-  onAddTool: () => void
-  onRemoveTool: (index: number) => void
-}
-
-export function ToolsTab({
-  tools,
-  toolName,
-  toolVersion,
-  toolError,
-  toolValid,
-  toolValidating,
-  toolTyping,
-  availableVersions,
-  versionsLoading,
-  onToolNameChange,
-  onToolVersionChange,
-  onAddTool,
-  onRemoveTool,
-}: ToolsTabProps) {
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
@@ -52,7 +34,7 @@ export function ToolsTab({
             <Input
               id="toolName"
               value={toolName}
-              onChange={(e) => onToolNameChange(e.target.value)}
+              onChange={(e) => handleToolNameChange(e.target.value)}
               placeholder="python"
               className={toolError ? 'border-red-500' : ''}
             />
@@ -67,7 +49,7 @@ export function ToolsTab({
                   .map(version => ({ value: version, label: version }))
               ]}
               value={toolVersion}
-              onChange={onToolVersionChange}
+              onChange={handleToolVersionChange}
               placeholder={
                 toolValid !== true
                   ? "Enter valid tool name first"
@@ -84,7 +66,7 @@ export function ToolsTab({
             <Button
               type="button"
               variant="secondary"
-              onClick={onAddTool}
+              onClick={handleAddTool}
               disabled={toolValidating || toolTyping || toolValid !== true}
               className="whitespace-nowrap"
             >
@@ -114,7 +96,7 @@ export function ToolsTab({
                   {t.name}{t.version ? `:${t.version}` : ''}
                   <button
                     type="button"
-                    onClick={() => onRemoveTool(i)}
+                    onClick={() => handleRemoveTool(i)}
                     className="ml-1 hover:text-destructive"
                   >
                     <X className="h-3 w-3" />

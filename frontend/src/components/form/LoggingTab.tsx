@@ -4,38 +4,24 @@ import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useServerForm } from '../../context/ServerFormContext'
 
-interface LoggingTabProps {
-  redirectStderr: boolean
-  stdoutLogfileMaxbytes: number
-  stdoutLogfileBackups: number
-  stderrLogfileMaxbytes: number
-  stderrLogfileBackups: number
-  logLevel: string
-  serverId?: string
-  onRedirectStderr: (value: boolean) => void
-  onStdoutLogfileMaxbytes: (value: number) => void
-  onStdoutLogfileBackups: (value: number) => void
-  onStderrLogfileMaxbytes: (value: number) => void
-  onStderrLogfileBackups: (value: number) => void
-  onLogLevelChange: (value: string) => void
-}
+export function LoggingTab() {
+  const {
+    redirectStderr,
+    stdoutLogfileMaxbytes,
+    stdoutLogfileBackups,
+    stderrLogfileMaxbytes,
+    stderrLogfileBackups,
+    logLevel,
+    handleRedirectStderrChange,
+    handleStdoutLogfileMaxbytesChange,
+    handleStdoutLogfileBackupsChange,
+    handleStderrLogfileMaxbytesChange,
+    handleStderrLogfileBackupsChange,
+    handleLogLevelChange,
+  } = useServerForm()
 
-export function LoggingTab({
-  redirectStderr,
-  stdoutLogfileMaxbytes,
-  stdoutLogfileBackups,
-  stderrLogfileMaxbytes,
-  stderrLogfileBackups,
-  logLevel,
-  serverId,
-  onRedirectStderr,
-  onStdoutLogfileMaxbytes,
-  onStdoutLogfileBackups,
-  onStderrLogfileMaxbytes,
-  onStderrLogfileBackups,
-  onLogLevelChange,
-}: LoggingTabProps) {
   const sizeOptions = [
     { label: '1 MB', value: 1024 * 1024 },
     { label: '5 MB', value: 5 * 1024 * 1024 },
@@ -70,8 +56,6 @@ export function LoggingTab({
     return closest.value.toString()
   }
 
-
-
   return (
     <div className="space-y-6">
       {/* General Settings */}
@@ -79,7 +63,7 @@ export function LoggingTab({
         <CardContent className="space-y-4 pt-6 px-6 pb-6">
           <div className="space-y-2">
             <Label htmlFor="loglevel">Log Level</Label>
-            <Select value={logLevel} onValueChange={onLogLevelChange}>
+            <Select value={logLevel} onValueChange={handleLogLevelChange}>
               <SelectTrigger id="loglevel">
                 <SelectValue placeholder="Select log level" />
               </SelectTrigger>
@@ -105,7 +89,7 @@ export function LoggingTab({
             </div>
             <Switch
               checked={redirectStderr}
-              onCheckedChange={onRedirectStderr}
+              onCheckedChange={handleRedirectStderrChange}
             />
           </div>
         </CardContent>
@@ -130,7 +114,7 @@ export function LoggingTab({
               <Label htmlFor="stdout-maxbytes">Max Size</Label>
               <Select
                 value={findClosestSizeOption(stdoutLogfileMaxbytes)}
-                onValueChange={(value) => onStdoutLogfileMaxbytes(parseInt(value))}
+                onValueChange={(value) => handleStdoutLogfileMaxbytesChange(parseInt(value))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select max size" />
@@ -156,7 +140,7 @@ export function LoggingTab({
                 min="1"
                 max="100"
                 value={stdoutLogfileBackups}
-                onChange={(e) => onStdoutLogfileBackups(parseInt(e.target.value) || 1)}
+                onChange={(e) => handleStdoutLogfileBackupsChange(parseInt(e.target.value) || 1)}
               />
               <div className="text-xs text-muted-foreground">
                 Number of backup files to keep
@@ -181,7 +165,7 @@ export function LoggingTab({
                 <Label htmlFor="stderr-maxbytes">Max Size</Label>
                 <Select
                   value={findClosestSizeOption(stderrLogfileMaxbytes)}
-                  onValueChange={(value) => onStderrLogfileMaxbytes(parseInt(value))}
+                  onValueChange={(value) => handleStderrLogfileMaxbytesChange(parseInt(value))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select max size" />
@@ -207,7 +191,7 @@ export function LoggingTab({
                   min="1"
                   max="100"
                   value={stderrLogfileBackups}
-                  onChange={(e) => onStderrLogfileBackups(parseInt(e.target.value) || 1)}
+                  onChange={(e) => handleStderrLogfileBackupsChange(parseInt(e.target.value) || 1)}
                 />
                 <div className="text-xs text-muted-foreground">
                   Number of backup files to keep
@@ -232,7 +216,7 @@ export function LoggingTab({
               <div className="flex items-center gap-2">
                 <span className="font-medium text-green-700">COMBINED:</span>
                 <code className="text-muted-foreground bg-muted px-2 py-1 rounded text-xs">
-                  /var/log/supervisor/{serverId || '{id}'}_combined.log
+                  /var/log/supervisor/{"{id}"}_combined.log
                 </code>
               </div>
             ) : (
@@ -240,13 +224,13 @@ export function LoggingTab({
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-green-700">STDOUT:</span>
                   <code className="text-muted-foreground bg-muted px-2 py-1 rounded text-xs">
-                    /var/log/supervisor/{serverId || '{id}'}_out.log
+                    /var/log/supervisor/{"{id}"}_out.log
                   </code>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-red-700">STDERR:</span>
                   <code className="text-muted-foreground bg-muted px-2 py-1 rounded text-xs">
-                    /var/log/supervisor/{serverId || '{id}'}_err.log
+                    /var/log/supervisor/{"{id}"}_err.log
                   </code>
                 </div>
               </>
