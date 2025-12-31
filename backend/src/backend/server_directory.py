@@ -4,15 +4,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from pydantic import BaseModel, Field
+
 from src.backend.enums import MCPServerTransport
 from src.backend.fast_mcp import FastMcpServerProxyServerFile
 from src.backend.mcp import MCPServersJson
 from src.backend.mise import MiseToml
+from src.backend.models import Server
 from src.backend.settings import get_settings
 from src.backend.supervisor import SupervisorProgramConfig
 
 
 settings = get_settings()
+
+class CommandResult(BaseModel):
     """Standard command return model."""
     stdout: str = Field(default="", description="Standard output from command")
     stderr: str = Field(default="", description="Standard error from command")
@@ -36,7 +40,7 @@ class ServerDirectory(BaseModel):
     """
 
     path: Path = Field(..., description="Base path for MCP servers")
-    server_config: Dict[str, Any] = Field(..., description="MCP server configuration as dict")
+    server_config: "Server" = Field(..., description="MCP server configuration")
 
     mise_toml_file: MiseToml
     fastmcp_server_proxy_server_file: FastMcpServerProxyServerFile
@@ -255,7 +259,7 @@ class ServerDirectory(BaseModel):
     @property
     def server_dir_path(self) -> str:
         """Get the server directory path."""
-        return os.path.join(self.base_path, self.server_config.name)
+        return os.path.join(self.path, self.server_config.name)
 
     def ensure_directory_exists(self) -> None:
         """Create the server directory if it doesn't exist."""
@@ -295,3 +299,7 @@ class ServerDirectory(BaseModel):
         (self.path / "server.py").write_text(str(self.fastmcp_server_proxy_server_file))
         (self.path / "supervisord.conf").write_text(str(self.supervisord_program_config))
         (self.path / "mise.toml").write_text(str(self.mise_toml_file))
+
+
+# Rebuild the model to resolve forward references
+ServerDirectory.model_rebuild()

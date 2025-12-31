@@ -6,7 +6,7 @@ from typing import List
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
+from src.backend.models import Base
 from src.backend.services.database import DatabaseService
 from src.backend.services.mise import MiseService
 from src.backend.services.processes import ProcessesService
@@ -21,7 +21,7 @@ class InMemoryDatabaseService(DatabaseService):
         """Initialize with in-memory SQLite."""
         # Create in-memory SQLite database
         engine = create_engine("sqlite:///:memory:", echo=False)
-        SQLModel.metadata.create_all(engine)
+        Base.metadata.create_all(engine)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
         # Create a mock database instance that uses the in-memory session

@@ -32,8 +32,8 @@ class PortManagerService(BaseModel):
 
         taken_ports = set()
         for server in existing_servers:
-            if server.get("port"):
-                taken_ports.add(server["port"])
+            if server.port:
+                taken_ports.add(server.port)
 
         return taken_ports
 

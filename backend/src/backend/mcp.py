@@ -4,46 +4,55 @@ from enum import Enum
 from typing import Annotated, Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field, model_serializer
+
 from src.backend.enums import MCPServerTransport
 
 
 class MCPServerTransports(Enum):
-    """MCP server transport types."""
+    """MCP server type types."""
     STDIO = "stdio"
     HTTP  = "http"
     SSE   = "sse"
 
 class MCPServerJsonEntryBase(BaseModel):
     """MCP server entry in mcpServers.json configuration file."""
+    # Remove the 'type' field from the base class to avoid conflicts with discriminated union
+    pass
 
-    transport: MCPServerTransport = Field(description="Transport type of the MCP server")
+    @model_serializer(mode='wrap')
+    def serializer(self, handler):
+        """Custom serializer to match expected JSON structure."""
+        data = handler(self)
+        # Remove 'type' from serialized output
+        data.pop("type", None)
+        return data
 
 class MCPServerJsonEntryStdIO(MCPServerJsonEntryBase):
-    """MCP server entry for STDIO transport."""
+    """MCP server entry for STDIO type."""
 
-    transport: Literal[MCPServerTransport.STDIO] = MCPServerTransport.STDIO
+    type: Literal[MCPServerTransport.STDIO] = MCPServerTransport.STDIO
     command: List[str] = Field(description="Command to start the MCP server")
     args: List[str] = Field(default_factory=list, description="Arguments for the command")
     envs: Dict[str, str] = Field(default_factory=dict, description="Environment variables for the MCP server")
 
 class MCPServerJsonEntryHTTP(MCPServerJsonEntryBase):
-    """MCP server entry for HTTP transport."""
+    """MCP server entry for HTTP type."""
 
-    transport: Literal[MCPServerTransport.HTTP] = MCPServerTransport.HTTP
+    type: Literal[MCPServerTransport.HTTP] = MCPServerTransport.HTTP
     url: str = Field(description="URL of the MCP server")
     headers: Dict[str, str] = Field(default_factory=dict, description="HTTP headers for the MCP server")
 
 class MCPServerJsonEntrySSE(MCPServerJsonEntryBase):
-    """MCP server entry for SSE transport."""
+    """MCP server entry for SSE type."""
 
-    transport: Literal[MCPServerTransport.SSE] = MCPServerTransport.SSE
+    type: Literal[MCPServerTransport.SSE] = MCPServerTransport.SSE
     url: str = Field(description="URL of the MCP server")
     headers: Dict[str, str] = Field(default_factory=dict, description="HTTP headers for the MCP server")
 
-# Discriminated union: transport field selects the class
+# Discriminated union: type field selects the class
 MCPServerJsonEntry = Annotated[
     Union[MCPServerJsonEntryStdIO, MCPServerJsonEntryHTTP, MCPServerJsonEntrySSE],
-    Field(discriminator="transport")
+    Field(discriminator="type")
 ]
 
 class MCPServersJson(BaseModel):

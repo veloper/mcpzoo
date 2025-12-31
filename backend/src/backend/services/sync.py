@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from src.backend.enums import SyncTaskStatus
-from src.backend.models import Server, ServerDirectory, SyncTask
+from src.backend.models import Server, ServerRecord, SyncTask, SyncTaskRecord
+from src.backend.server_directory import ServerDirectory
 from src.backend.services.database import get_database_service
 from src.backend.services.logging import logger
 from src.backend.settings import get_settings
@@ -53,7 +54,9 @@ class SyncService:
         )
 
         db = get_database_service().get_db()
-        task_id = db.insert_sync_task(task.model_dump())
+        task_record = task.to_sa_record()
+        inserted_task = db.insert_sync_task(task_record)
+        task_id = inserted_task.id
 
         # Update log file path with actual ID
         actual_log_file_path = str(self.LOG_DIR / f"{task_id}.log")
@@ -99,10 +102,11 @@ class SyncService:
             
             # Get all servers from database
             # Note: Re-establish DB connection in child process
+            from src.backend.services.database import Database
             from src.backend.services.supervisor import SupervisorService
-            from src.backend.sqlmodel_db import Database
 
             db = Database()
+            # Note: In child process, Database() creates a new instance with its own DB connection
             servers = db.get_all_servers()
             
             total_servers = len(servers)
@@ -124,24 +128,25 @@ class SyncService:
                 current_step="Loading MCP server directories"
             )
             
-            for idx, server_data in enumerate(servers):
+            for idx, server_config in enumerate(servers):
                 try:
-                    server_config = Server(**server_data)
+                    # server_config is already a Pydantic Server model from db.get_all_servers()
                     directory = server_config.get_server_directory()
                     directories.append(directory)
-                    
+
                     # Update synced_at timestamp
-                    server_data["synced_at"] = datetime.now(timezone.utc)
-                    synced_servers.append(server_data)
-                    
+                    server_with_synced = server_config.model_copy(update={"synced_at": datetime.now(timezone.utc)})
+                    synced_servers.append(server_with_synced)
+
                     task_logger.info(f"Loaded McpDirectory for server: {server_config.name} (ID: {server_config.id})")
                 except Exception as e:
-                    task_logger.error(f"Failed to load McpDirectory for server {server_data.get('name', 'unknown')}: {str(e)}")
+                    task_logger.error(f"Failed to load McpDirectory for server {server_config.name if hasattr(server_config, 'name') else 'unknown'}: {str(e)}")
                     raise
             
             # Update synced_at timestamps in database
-            for server_data in synced_servers:
-                db.update_server(server_data["id"], {"synced_at": server_data["synced_at"]})
+            for server_model in synced_servers:
+                server_record = server_model.to_sa_record()
+                db.update_server(server_model.id, server_record)
             
             # Clear the entire /app/servers/ directory before syncing to remove deleted servers
             existing_dirs = [d for d in self.SERVERS_DIR.iterdir() if d.is_dir()]
@@ -308,7 +313,7 @@ class SyncService:
         total_servers: Optional[int] = None,
     ) -> None:
         """Update sync task status in database.
-        
+
         Args:
             task_id: Task identifier
             status: New task status
@@ -321,29 +326,38 @@ class SyncService:
             total_servers: Total servers to process
         """
         try:
-            from src.backend.sqlmodel_db import Database
-            db = Database()
+            db = get_database_service().get_db()
 
-            update_data = {}
+            # Fetch current task to preserve existing fields
+            task = db.get_sync_task(task_id)
+            if not task:
+                logger.warning(f"Sync task {task_id} not found for update")
+                return
+
+            # Update only the provided fields
+            task_dict = task.model_dump()
             if status is not None:
-                update_data["status"] = status.value
+                task_dict["status"] = status
             if progress is not None:
-                update_data["progress"] = progress
+                task_dict["progress"] = progress
             if current_step is not None:
-                update_data["current_step"] = current_step
+                task_dict["current_step"] = current_step
             if started_at is not None:
-                update_data["started_at"] = started_at
+                task_dict["started_at"] = started_at
             if completed_at is not None:
-                update_data["completed_at"] = completed_at
+                task_dict["completed_at"] = completed_at
             if error_message is not None:
-                update_data["error_message"] = error_message
+                task_dict["error_message"] = error_message
             if servers_processed is not None:
-                update_data["servers_processed"] = servers_processed
+                task_dict["servers_processed"] = servers_processed
             if total_servers is not None:
-                update_data["total_servers"] = total_servers
+                task_dict["total_servers"] = total_servers
 
-            db.update_sync_task(task_id, update_data)
-            
+            # Convert Pydantic model to SyncTaskRecord
+            updated_task = SyncTask.model_validate(task_dict)
+            task_record = updated_task.to_sa_record()
+            db.update_sync_task(task_id, task_record)
+
         except Exception as e:
             logger.error(f"Failed to update task status: {e}")
     

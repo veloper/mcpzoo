@@ -9,6 +9,7 @@ httpx>=0.28.1
 fastmcp
 psutil>=5.9.0
 click>=8.0.0
+sqlalchemy>=2.0.0
 alembic>=1.17.2
 
 [dev]

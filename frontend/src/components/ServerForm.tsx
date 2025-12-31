@@ -53,7 +53,7 @@ function ServerFormContent({ onSuccess, onCancel, editingId }: ServerFormProps) 
               <Download className="mr-2 h-5 w-5" />
               Import
             </Button>
-            <Button onClick={handleSubmit} disabled={loading || !hasChanges} className="h-10 text-sm font-medium">
+            <Button onClick={handleSubmit} disabled={loading} className="h-10 text-sm font-medium">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
             </Button>

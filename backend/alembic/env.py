@@ -3,15 +3,15 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Import your SQLAlchemy models
-from backend.models import Base
-
+from alembic import context
 
 # Add src to path so we can import models
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Import your SQLAlchemy models (after path is set)
+from backend.models import Base
 
 
 

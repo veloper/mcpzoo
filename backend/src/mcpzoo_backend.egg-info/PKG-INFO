@@ -15,6 +15,7 @@ Requires-Dist: httpx>=0.28.1
 Requires-Dist: fastmcp
 Requires-Dist: psutil>=5.9.0
 Requires-Dist: click>=8.0.0
+Requires-Dist: sqlalchemy>=2.0.0
 Requires-Dist: alembic>=1.17.2
 Provides-Extra: dev
 Requires-Dist: pytest==7.4.3; extra == "dev"

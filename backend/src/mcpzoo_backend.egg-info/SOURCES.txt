@@ -13,7 +13,6 @@ src/backend/process.py
 src/backend/request_response_models.py
 src/backend/server_directory.py
 src/backend/settings.py
-src/backend/sqlmodel_db.py
 src/backend/supervisor.py
 src/backend/routers/__init__.py
 src/backend/routers/auth.py

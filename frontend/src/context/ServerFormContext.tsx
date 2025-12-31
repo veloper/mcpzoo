@@ -253,19 +253,9 @@ export function ServerFormProvider({ editingId, onSuccess, onCancel, children }:
 
   // Check if current form state differs from original server data
   const hasChanges = React.useMemo(() => {
-    if (!editingId) {
-      // For new servers, always allow saving if there's a name
-      return name.trim().length > 0
-    }
-
-    // For editing servers, compare current hash with initial hash
-    if (!initialFormHash) {
-      return false // No changes if we haven't set the initial hash yet
-    }
-
-    const currentHash = hashFormState()
-    return currentHash !== initialFormHash
-  }, [editingId, initialFormHash, name, transport, command, url, args, autostart, autorestart, startsecs, startretries, priority, stopsignal, stopwaitsecs, redirectStderr, taskInstall, taskUninstall, envVars, tools, logLevel])
+    // Always allow saving
+    return true
+  }, [])
 
   const getCurrentServerConfig = (): MCPServerConfig => {
     // Compute log file paths based on server ID and redirect_stderr setting
