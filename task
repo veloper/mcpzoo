@@ -442,6 +442,182 @@ def prod__docker__build(*args):
     ] + list(args)
     subprocess.run(cmd, check=True)
 
+# ======================
+# Database Commands
+# ======================
+
+@cli.cmd()
+def dev__db__init(*args):
+    """
+    Initialize development database with latest migrations.
+
+    Example:
+        task dev db init
+    """
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(["alembic", "upgrade", "head"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    if result.returncode == 0:
+        print("✅ Development database initialized successfully")
+    else:
+        print("❌ Database initialization failed")
+        sys.exit(1)
+
+@cli.cmd()
+def dev__db__reset(*args):
+    """
+    Reset development database (removes DB file and re-initializes).
+
+    WARNING: This will delete all data!
+
+    Example:
+        task dev db reset
+    """
+    import shutil
+
+    from pathlib import Path
+
+    # Remove database file
+    db_path = Path("data/mcpzoo.db")
+    if db_path.exists():
+        db_path.unlink()
+        print("🗑️  Removed existing development database")
+
+    # Re-initialize
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(["alembic", "upgrade", "head"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    if result.returncode == 0:
+        print("✅ Development database reset and initialized successfully")
+    else:
+        print("❌ Database reset failed")
+        sys.exit(1)
+
+@cli.cmd()
+def dev__db__migrate(*args):
+    """
+    Run pending migrations on development database.
+
+    Example:
+        task dev db migrate
+    """
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(["alembic", "upgrade", "head"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    if result.returncode == 0:
+        print("✅ Development migrations completed successfully")
+    else:
+        print("❌ Migration failed")
+        sys.exit(1)
+
+@cli.cmd()
+def dev__db__revision(*args):
+    """
+    Create new migration for development database.
+
+    Example:
+        task dev db revision -m "Add new field"
+    """
+    import sys
+
+    # Find the -m flag and extract message
+    message = None
+    for i, arg in enumerate(args):
+        if arg == "-m" and i + 1 < len(args):
+            message = args[i + 1]
+            break
+
+    if not message:
+        print("❌ Migration message required. Use: task dev db revision -m 'message'")
+        sys.exit(1)
+
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(
+        ["alembic", "revision", "--autogenerate", "-m", message],
+        env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")}
+    )
+    if result.returncode == 0:
+        print(f"✅ Migration created: {message}")
+    else:
+        print("❌ Migration creation failed")
+        sys.exit(1)
+
+@cli.cmd()
+def dev__db__status(*args):
+    """
+    Show development database migration status.
+
+    Example:
+        task dev db status
+    """
+    os.chdir(BACKEND_DIR)
+    print("Development database migration status:")
+    subprocess.run(["alembic", "current"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    print("\nAvailable heads:")
+    subprocess.run(["alembic", "heads"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+
+@cli.cmd()
+def dev__db__history(*args):
+    """
+    Show development database migration history.
+
+    Example:
+        task dev db history
+    """
+    os.chdir(BACKEND_DIR)
+    subprocess.run(["alembic", "history"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+
+@cli.cmd()
+def dev__db__downgrade(*args):
+    """
+    Downgrade development database to specific revision.
+
+    Example:
+        task dev db downgrade -1  # Down one revision
+        task dev db downgrade base  # To beginning
+    """
+    import sys
+
+    revision = args[0] if args else "-1"
+
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(
+        ["alembic", "downgrade", revision],
+        env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")}
+    )
+    if result.returncode == 0:
+        print(f"✅ Downgraded to revision: {revision}")
+    else:
+        print("❌ Downgrade failed")
+        sys.exit(1)
+
+@cli.cmd()
+def prod__db__migrate(*args):
+    """
+    Run pending migrations on production database.
+
+    Example:
+        task prod db migrate
+    """
+    os.chdir(BACKEND_DIR)
+    result = subprocess.run(["alembic", "upgrade", "head"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    if result.returncode == 0:
+        print("✅ Production migrations completed successfully")
+    else:
+        print("❌ Production migration failed")
+        sys.exit(1)
+
+@cli.cmd()
+def prod__db__status(*args):
+    """
+    Show production database migration status.
+
+    Example:
+        task prod db status
+    """
+    os.chdir(BACKEND_DIR)
+    print("Production database migration status:")
+    subprocess.run(["alembic", "current"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+    print("\nAvailable heads:")
+    subprocess.run(["alembic", "heads"], env={**os.environ, "PYTHONPATH": str(BACKEND_DIR / "src")})
+
 
 
 if __name__ == "__main__":

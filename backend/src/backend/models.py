@@ -31,6 +31,7 @@ class SyncTask(SQLModel, table=True):
     """Background sync task model."""
     
     __tablename__ = "sync_tasks"
+    __table_args__ = {"extend_existing": True}
 
     id                : int | None       = Field(default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}, description="Unique task identifier")
     status            : SyncTaskStatus   = Field(default=SyncTaskStatus.PENDING, description="Current task status")
@@ -53,8 +54,9 @@ class Server(SQLModel, table=True):
 
     """
     __tablename__ = "servers"
+    __table_args__ = {"extend_existing": True}
 
-    id              : str                      = Field(primary_key=True, description="Unique server identifier")
+    id              : int | None               = Field(default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}, description="Unique server identifier")
     name            : str                      = Field(description="Server name")
 
     

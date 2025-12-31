@@ -153,8 +153,8 @@ interface ServerFormContextType {
 const ServerFormContext = createContext<ServerFormContextType | undefined>(undefined)
 
 interface ServerFormProviderProps {
-  editingId?: string | null
-  onSuccess: (serverId?: string) => void
+  editingId?: number | null
+  onSuccess: (serverId?: number) => void
   onCancel: () => void
   children: React.ReactNode
 }
@@ -728,6 +728,11 @@ export function ServerFormProvider({ editingId, onSuccess, onCancel, children }:
       // Load envs
       if (config.envs && typeof config.envs === 'object') {
         setEnvVars(config.envs)
+      }
+
+      // Load headers
+      if (config.headers && typeof config.headers === 'object') {
+        setHeaders(config.headers)
       }
 
       // Load log level

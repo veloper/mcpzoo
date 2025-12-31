@@ -56,7 +56,7 @@ export function ServersPage() {
     }
   }
 
-  const handleDeleteServer = async (id: string, name: string) => {
+  const handleDeleteServer = async (id: number, name: string) => {
     if (confirm(`Are you sure you want to delete server "${name}"?`)) {
       try {
         await deleteServer(id)
@@ -117,7 +117,7 @@ export function ServersPage() {
       </div>
 
       {servers.length === 0 ? (
-        <Alert>
+        <Alert className="mt-4">
           <AlertTitle>No servers found</AlertTitle>
           <AlertDescription>
             You haven't configured any MCP servers yet. <Button variant="link" className="p-0 h-auto" onClick={() => navigate('/servers/new')}>Add your first server</Button> to get started.

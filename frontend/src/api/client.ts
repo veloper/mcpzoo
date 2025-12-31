@@ -64,7 +64,7 @@ class APIClient {
     return response.data
   }
 
-  async getServer(id: string) {
+  async getServer(id: number) {
     const response = await this.client.get(`/servers/${id}`)
     return response.data
   }
@@ -74,12 +74,12 @@ class APIClient {
     return response.data
   }
 
-  async updateServer(id: string, server: any) {
+  async updateServer(id: number, server: any) {
     const response = await this.client.put(`/servers/${id}`, server)
     return response.data
   }
 
-  async deleteServer(id: string) {
+  async deleteServer(id: number) {
     await this.client.delete(`/servers/${id}`)
   }
 
@@ -93,12 +93,12 @@ class APIClient {
     return response.data
   }
 
-  async getServerLogs(serverId: string, type: 'stdout' | 'stderr' = 'stdout') {
+  async getServerLogs(serverId: number, type: 'stdout' | 'stderr' = 'stdout') {
     const response = await this.client.get(`/servers/${serverId}/logs`, { params: { type } })
     return response.data
   }
 
-  async getServerFiles(serverId: string, serverConfig?: any) {
+  async getServerFiles(serverId: number, serverConfig?: any) {
     const response = await this.client.post(`/servers/${serverId}/files`, serverConfig || {})
     return response.data
   }

@@ -37,7 +37,7 @@ async def list_servers(
 
 @router.get("/{server_id}", response_model=dict)
 async def get_server(
-    server_id: str,
+    server_id: int,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
 ):
@@ -71,9 +71,7 @@ async def create_server(
     port_manager: PortManagerService = Depends(get_port_manager_service),
 ):
     """Create a new MCP server."""
-    # Generate ID before validation since MCPServerConfig requires it
-    server_id = str(uuid.uuid4())
-    server["id"] = server_id
+    # Set port
     server["port"] = port_manager.get_next_mcp_server_available_port()
 
     # Validate incoming data using MCPServerConfig model
@@ -81,16 +79,20 @@ async def create_server(
 
     server_dict = server_config.model_dump()
 
-    db = db_service.get_db()
-    db.insert_server(server_dict)
+    # Remove id if it's None to allow autoincrement
+    if server_dict.get('id') is None:
+        del server_dict['id']
 
-    return {"id": server_id, **server_dict}
+    db = db_service.get_db()
+    created_server = db.insert_server(server_dict)
+
+    return created_server
 
 
 
 @router.put("/{server_id}")
 async def update_server(
-    server_id: str,
+    server_id: int,
     server: dict,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
@@ -124,7 +126,7 @@ async def update_server(
 
 @router.get("/{server_id}/logs")
 async def get_server_logs(
-    server_id: str,
+    server_id: int,
     type: str = "stdout",
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
@@ -158,7 +160,7 @@ async def get_server_logs(
 
 @router.delete("/{server_id}", status_code=204)
 async def delete_server(
-    server_id: str,
+    server_id: int,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),
 ):
@@ -251,13 +253,13 @@ async def parse_server_config(
 
             # Convert to MCPServerConfig format
             mcpserver_config = {
-                "id": str(uuid.uuid4()),  # Generate unique ID
                 "name": server_name,
-                "transport": server_config.get("type", "stdio"),
+                "transport": server_config.get("type") or ("http" if server_config.get("url") else "stdio"),
                 "command": server_config.get("command"),
                 "arguments": server_config.get("args", []),
                 "url": server_config.get("url"),
                 "envs": server_config.get("env", {}),
+                "headers": server_config.get("headers", {}),
             }
 
             # Validate using MCPServerConfig model
@@ -277,7 +279,7 @@ async def parse_server_config(
 
 @router.post("/{server_id}/files", response_model=dict)
 async def get_server_files(
-    server_id: str,
+    server_id: int,
     server_config_data: dict | None = None,
     username: str = Depends(verify_token),
     db_service: DatabaseService = Depends(get_database_service),

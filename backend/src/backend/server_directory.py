@@ -1,7 +1,7 @@
 import json, logging, os, re, signal, subprocess
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from pydantic import BaseModel, Field
 from src.backend.enums import MCPServerTransport
@@ -12,12 +12,7 @@ from src.backend.settings import get_settings
 from src.backend.supervisor import SupervisorProgramConfig
 
 
-if TYPE_CHECKING:
-    from src.backend.models import Server
-
 settings = get_settings()
-
-class CommandResult(BaseModel):
     """Standard command return model."""
     stdout: str = Field(default="", description="Standard output from command")
     stderr: str = Field(default="", description="Standard error from command")
@@ -41,7 +36,7 @@ class ServerDirectory(BaseModel):
     """
 
     path: Path = Field(..., description="Base path for MCP servers")
-    server_config: "Server" = Field(..., description="MCP server configuration")
+    server_config: Dict[str, Any] = Field(..., description="MCP server configuration as dict")
 
     mise_toml_file: MiseToml
     fastmcp_server_proxy_server_file: FastMcpServerProxyServerFile

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../api/client'
 
 export interface Server {
-  id: string
+  id: number
   name: string
   transport: string
   port: number
@@ -33,7 +33,7 @@ export function useServers() {
     fetchServers()
   }, [])
 
-  const deleteServer = async (id: string) => {
+  const deleteServer = async (id: number) => {
     try {
       await apiClient.deleteServer(id)
       setServers(servers.filter(s => s.id !== id))
@@ -43,7 +43,7 @@ export function useServers() {
     }
   }
 
-  const startServer = async (id: string) => {
+  const startServer = async (id: number) => {
     try {
       await apiClient.startProgram(`mcp_${servers.find(s => s.id === id)?.name}`)
       await fetchServers()
@@ -53,7 +53,7 @@ export function useServers() {
     }
   }
 
-  const stopServer = async (id: string) => {
+  const stopServer = async (id: number) => {
     try {
       await apiClient.stopProgram(`mcp_${servers.find(s => s.id === id)?.name}`)
       await fetchServers()
@@ -63,7 +63,7 @@ export function useServers() {
     }
   }
 
-  const fetchServerFiles = useCallback(async (serverId: string, serverConfig?: any) => {
+  const fetchServerFiles = useCallback(async (serverId: number, serverConfig?: any) => {
     try {
       const response = await apiClient.getServerFiles(serverId, serverConfig)
       return response

@@ -13,9 +13,9 @@ import { McpServerImport } from './McpServerImport'
 import { ServerFormProvider, useServerForm } from '../context/ServerFormContext'
 
 interface ServerFormProps {
-  onSuccess: (serverId?: string) => void
+  onSuccess: (serverId?: number) => void
   onCancel: () => void
-  editingId?: string | null
+  editingId?: number | null
 }
 
 function ServerFormContent({ onSuccess, onCancel, editingId }: ServerFormProps) {

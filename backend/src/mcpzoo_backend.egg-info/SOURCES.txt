@@ -11,6 +11,7 @@ src/backend/mise.py
 src/backend/models.py
 src/backend/process.py
 src/backend/request_response_models.py
+src/backend/server_directory.py
 src/backend/settings.py
 src/backend/sqlmodel_db.py
 src/backend/supervisor.py

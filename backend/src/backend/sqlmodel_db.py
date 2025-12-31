@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlmodel import SQLModel, select
@@ -25,8 +27,20 @@ class Database:
         self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
-        # Create tables
-        SQLModel.metadata.create_all(bind=self.engine)
+        # Run migrations instead of create_all
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Run Alembic migrations to bring database up to date."""
+        # Get the backend directory (parent of alembic directory)
+        backend_dir = Path(__file__).parent.parent.parent
+        alembic_cfg = Config(backend_dir / "alembic.ini")
+
+        # Set the correct path for the alembic directory
+        alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+
+        # Run upgrade to head
+        command.upgrade(alembic_cfg, "head")
 
     def generate_id(self) -> str:
         """Generate a UUID for database documents."""
@@ -36,7 +50,7 @@ class Database:
         """Get a database session."""
         return self.SessionLocal()
 
-    def insert_server(self, server_data: Dict[str, Any]) -> str:
+    def insert_server(self, server_data: Dict[str, Any]) -> Dict[str, Any]:
         """Insert server."""
         with self.get_session() as session:
             # Convert dict to ServerConfiguration, handling JSON fields
@@ -44,9 +58,9 @@ class Database:
             session.add(server)
             session.commit()
             session.refresh(server)
-            return server.id
+            return server.model_dump()
 
-    def get_server(self, server_id: str) -> Optional[Dict]:
+    def get_server(self, server_id: int) -> Optional[Dict]:
         """Get server by ID."""
         with self.get_session() as session:
             server = session.get(Server, server_id)

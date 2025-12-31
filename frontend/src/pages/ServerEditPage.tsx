@@ -19,7 +19,7 @@ export function ServerEditPage() {
           setError('Server ID is required')
           return
         }
-        const data = await apiClient.getServer(id)
+        const data = await apiClient.getServer(parseInt(id))
         setServerData(data)
       } catch (err: any) {
         setError(err.response?.data?.detail || 'Failed to load server')
@@ -73,7 +73,7 @@ export function ServerEditPage() {
     <ServerForm
       onSuccess={handleSuccess}
       onCancel={handleCancel}
-      editingId={id}
+      editingId={parseInt(id!)}
     />
   )
 }
