@@ -143,7 +143,7 @@ async def get_server_logs(
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    log_file = f"/var/log/supervisor/mcp_{server['name']}_{type}.log"
+    log_file = f"/var/log/supervisor/mcp_{server.name}_{type}.log"
     
     try:
         with open(log_file, 'r') as f:
@@ -151,7 +151,7 @@ async def get_server_logs(
             content = ''.join(lines[-100:])
         
         return {
-            "server_name": server['name'],
+            "server_name": server.name,
             "type": type,
             "content": content,
         }
@@ -189,17 +189,17 @@ async def get_mcp_config(
     mcp_servers = {}
 
     for server in servers:
-        server_name = server.get("name", "")
-        transport = server.get("transport", "")
-        port = server.get("port")
+        server_name = server.name
+        transport = server.transport
+        port = server.port
 
         if not server_name or not transport:
             continue
 
         if transport == "stdio":
             # For stdio servers, FastMCP runs the actual MCP server command
-            command = server.get("command", "")
-            arguments = server.get("arguments", [])
+            command = server.command
+            arguments = server.arguments or []
 
             if command:
                 # Build the command array as configured in MCPZoo

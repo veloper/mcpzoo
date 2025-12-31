@@ -109,14 +109,27 @@ class Database:
             task_records = session.execute(select(SyncTaskRecord)).scalars().all()
             return [record.to_pydantic_model() for record in task_records]
 
-    def update_sync_task(self, task_id: int, task_record: SyncTaskRecord) -> Optional[SyncTask]:
-        """Update sync task with new record and return Pydantic model."""
+    def update_sync_task(self, task_id: int, updates: SyncTaskRecord | dict) -> Optional[SyncTask]:
+        """Update sync task with new record or dict of updates and return Pydantic model."""
         with self.get_session() as session:
-            task_record.id = task_id  # Ensure ID is set
-            merged_record = session.merge(task_record)
-            session.commit()
-            session.refresh(merged_record)
-            return merged_record.to_pydantic_model()
+            if isinstance(updates, dict):
+                # Get current task and update with dict
+                current_record = session.get(SyncTaskRecord, task_id)
+                if not current_record:
+                    return None
+                for key, value in updates.items():
+                    if hasattr(current_record, key):
+                        setattr(current_record, key, value)
+                session.commit()
+                session.refresh(current_record)
+                return current_record.to_pydantic_model()
+            else:
+                # Handle as full record
+                updates.id = task_id  # Ensure ID is set
+                merged_record = session.merge(updates)
+                session.commit()
+                session.refresh(merged_record)
+                return merged_record.to_pydantic_model()
 
     def delete_sync_task(self, task_id: int) -> bool:
         """Delete sync task."""

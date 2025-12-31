@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel, Field
+
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import Logger, get_logging_service
 from src.backend.settings import get_settings

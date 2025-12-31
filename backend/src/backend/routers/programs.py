@@ -3,6 +3,7 @@ import subprocess
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
 from src.backend.auth import verify_token
 from src.backend.models import Server
 from src.backend.services.database import DatabaseService, get_database_service
@@ -67,7 +68,7 @@ async def get_process_logs(
     # Look up server config by name
     db = db_service.get_db()
     all_servers = db.get_all_servers()
-    server_data = next((s for s in all_servers if s.get('name') == server_name), None)
+    server_data = next((s for s in all_servers if s.name == server_name), None)
 
     if not server_data:
         raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")

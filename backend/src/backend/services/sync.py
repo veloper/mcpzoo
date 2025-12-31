@@ -58,6 +58,9 @@ class SyncService:
         inserted_task = db.insert_sync_task(task_record)
         task_id = inserted_task.id
 
+        if not task_id:
+            raise Exception("Failed to create sync task in database")
+
         # Update log file path with actual ID
         actual_log_file_path = str(self.LOG_DIR / f"{task_id}.log")
         db.update_sync_task(task_id, {"log_file_path": actual_log_file_path})
@@ -372,7 +375,8 @@ class SyncService:
         """
         try:
             db = get_database_service().get_db()
-            return db.get_sync_task(task_id)
+            task = db.get_sync_task(task_id)
+            return task.model_dump() if task else None
         except Exception as e:
             logger.error(f"Error getting task {task_id}: {e}")
             return None
@@ -391,14 +395,15 @@ class SyncService:
             db = get_database_service().get_db()
             all_tasks = db.get_all_sync_tasks()
 
-            # Sort by created_at descending
-            all_tasks.sort(
+            # Convert to dicts and sort by created_at descending
+            all_tasks_dicts = [task.model_dump() for task in all_tasks]
+            all_tasks_dicts.sort(
                 key=lambda x: x.get("created_at", ""),
                 reverse=True
             )
 
-            total = len(all_tasks)
-            tasks = all_tasks[offset:offset + limit]
+            total = len(all_tasks_dicts)
+            tasks = all_tasks_dicts[offset:offset + limit]
 
             return {
                 "tasks": tasks,
