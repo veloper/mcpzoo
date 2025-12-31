@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import json, logging, os, re, signal, subprocess
+import re
 
-from datetime import datetime, timezone
-from enum import Enum
-from pathlib import Path
-from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
-from src.backend.settings import get_settings
+from pydantic import BaseModel, Field
 
 
 if TYPE_CHECKING:
@@ -34,34 +29,45 @@ class MiseToml(BaseModel):
     tasks: Dict[str, str] = Field(default_factory=dict, description="Mise tasks (install, uninstall, etc.)")
 
     def ensure_tool(self, tool_name: str, version: Optional[str] = None) -> None:
-        """Ensure tool exists, with version-aware upgrade semantics.
+        """
+        Ensure that a tool with the given name (and optionally version) exists in the tools list.
 
-        Modes:
-        - No version specified: add if missing (default to "*"), preserve any existing version
-        - Version specified: add if missing, upgrade if existing < new (lexicographically), never downgrade
+        Logic:
+        - If the tool does not exist, add it with the specified version (or "*" if no version is given).
+        - If the tool exists and a version is specified:
+            - If both the existing and new versions are numeric (e.g., '1.2.3'), compare them part by part.
+            - Upgrade to the higher version if the new version is greater; never downgrade.
+            - If versions are not comparable or new version is not specified, keep the existing version.
+        - If the tool exists and no version is specified, do nothing (preserve existing version).
 
         Args:
-            tool_name: Name of tool/language
-            version: Exact or min version. None means any version acceptable, defaults to "*" if adding
+            tool_name: Name of the tool or language to ensure.
+            version: Optional version string. If None, any version is acceptable (defaults to "*" if adding).
         """
         existing = next((t for t in self.tools if t.name == tool_name), None)
-
         if existing is None:
-            # Tool doesn't exist
             self.tools.append(MiseTool(name=tool_name, version=version or "*"))
-        elif version is not None:
-            # Tool exists + version constraint specified: upgrade if new > old (lex)
-            if (
-                existing.version is not None
-                and existing.version != "*"
-                and version is not None
-                and version > existing.version
-            ):
+            return
+
+        if version is None:
+            return
+
+        existing_version = existing.version or "*"
+        if not re.match(r'^\d+(\.\d+)*$', existing_version) or not re.match(r'^\d+(\.\d+)*$', version):
+            return
+
+        # Compare versions
+        v1_parts = [int(p) for p in existing_version.split('.')]
+        v2_parts = [int(p) for p in version.split('.')]
+        max_len = max(len(v1_parts), len(v2_parts))
+        v1_parts.extend([0] * (max_len - len(v1_parts)))
+        v2_parts.extend([0] * (max_len - len(v2_parts)))
+        for p1, p2 in zip(v1_parts, v2_parts):
+            if p1 < p2:
                 existing.version = version
-            elif existing.version == "*":
-                # Wildcard always yields to explicit version
-                existing.version = version
-        # else: tool exists, no version constraint, leave untouched (permissive mode)
+                break
+            elif p1 > p2:
+                break
 
 
     def ensure_task(self, task_name: str, command: List[str]) -> None:

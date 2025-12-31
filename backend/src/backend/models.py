@@ -11,7 +11,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from src.backend.enums import LogLevel, SyncTaskStatus
 from src.backend.fast_mcp import FastMcpServerProxyServerFile
 from src.backend.mcp import MCPServersJson, MCPServerTransport
-from src.backend.mise import MiseToml
+from src.backend.mise import MiseToml, MiseTool
 from src.backend.settings import get_settings
 from src.backend.supervisor import SupervisorProgramConfig
 
@@ -30,8 +30,6 @@ class ServerTool(BaseModel):
     """Tool/language requirement with version for server configuration."""
     name: str = Field(description="Tool/language name")
     version: str | None = Field(default=None, description="Version requirement")
-    operator: str = Field(default="=", description="Version operator (=, >=, >, <, <=)")
-
 
 class SyncTaskRecord(Base):
     """Background sync task database record."""
@@ -222,73 +220,40 @@ class Server(BaseModel):
 
     def to_sa_record(self) -> ServerRecord:
         """Convert Pydantic model to SQLAlchemy record for persistence."""
-        # For new records, don't specify id so SQLite can auto-generate it
-        if self.id is None:
-            return ServerRecord(
-                name=self.name,
-                transport=self.transport,
-                url=self.url,
-                command=self.command,
-                arguments=self.arguments,
-                port=self.port,
-                envs=self.envs,
-                headers=self.headers,
-                tools=[t.model_dump() for t in self.tools],
-                task_install=self.task_install,
-                task_uninstall=self.task_uninstall,
-                autostart=self.autostart,
-                autorestart=self.autorestart,
-                priority=self.priority,
-                startsecs=self.startsecs,
-                startretries=self.startretries,
-                stopsignal=self.stopsignal,
-                stopwaitsecs=self.stopwaitsecs,
-                log_level=self.log_level,
-                stdout_logfile=self.stdout_logfile,
-                stdout_logfile_maxbytes=self.stdout_logfile_maxbytes,
-                stdout_logfile_backups=self.stdout_logfile_backups,
-                redirect_stderr=self.redirect_stderr,
-                stderr_logfile=self.stderr_logfile,
-                stderr_logfile_maxbytes=self.stderr_logfile_maxbytes,
-                stderr_logfile_backups=self.stderr_logfile_backups,
-                created_at=self.created_at,
-                updated_at=self.updated_at,
-                synced_at=self.synced_at,
-            )
-        else:
-            # For updates, include the id
-            return ServerRecord(
-                id=self.id,
-                name=self.name,
-                transport=self.transport,
-                url=self.url,
-                command=self.command,
-                arguments=self.arguments,
-                port=self.port,
-                envs=self.envs,
-                headers=self.headers,
-                tools=[t.model_dump() for t in self.tools],
-                task_install=self.task_install,
-                task_uninstall=self.task_uninstall,
-                autostart=self.autostart,
-                autorestart=self.autorestart,
-                priority=self.priority,
-                startsecs=self.startsecs,
-                startretries=self.startretries,
-                stopsignal=self.stopsignal,
-                stopwaitsecs=self.stopwaitsecs,
-                log_level=self.log_level,
-                stdout_logfile=self.stdout_logfile,
-                stdout_logfile_maxbytes=self.stdout_logfile_maxbytes,
-                stdout_logfile_backups=self.stdout_logfile_backups,
-                redirect_stderr=self.redirect_stderr,
-                stderr_logfile=self.stderr_logfile,
-                stderr_logfile_maxbytes=self.stderr_logfile_maxbytes,
-                stderr_logfile_backups=self.stderr_logfile_backups,
-                created_at=self.created_at,
-                updated_at=self.updated_at,
-                synced_at=self.synced_at,
-            )
+        kwargs = dict(
+            name=self.name,
+            transport=self.transport,
+            url=self.url,
+            command=self.command,
+            arguments=self.arguments,
+            port=self.port,
+            envs=self.envs,
+            headers=self.headers,
+            tools=[t.model_dump() for t in self.tools],
+            task_install=self.task_install,
+            task_uninstall=self.task_uninstall,
+            autostart=self.autostart,
+            autorestart=self.autorestart,
+            priority=self.priority,
+            startsecs=self.startsecs,
+            startretries=self.startretries,
+            stopsignal=self.stopsignal,
+            stopwaitsecs=self.stopwaitsecs,
+            log_level=self.log_level,
+            stdout_logfile=self.stdout_logfile,
+            stdout_logfile_maxbytes=self.stdout_logfile_maxbytes,
+            stdout_logfile_backups=self.stdout_logfile_backups,
+            redirect_stderr=self.redirect_stderr,
+            stderr_logfile=self.stderr_logfile,
+            stderr_logfile_maxbytes=self.stderr_logfile_maxbytes,
+            stderr_logfile_backups=self.stderr_logfile_backups,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            synced_at=self.synced_at,
+        )
+        if self.id is not None:
+            kwargs["id"] = self.id
+        return ServerRecord(**kwargs)
 
     def get_supervisor_conf(self) -> SupervisorProgramConfig:
         """Gets the supervisord program configuration for this server."""
@@ -313,6 +278,7 @@ class Server(BaseModel):
             environment=self.envs
         )
 
+
     def get_mise_toml(self) -> MiseToml:
         """Gets the mise.toml configuration for this server."""
         tasks = {}
@@ -321,9 +287,11 @@ class Server(BaseModel):
         if self.task_uninstall:
             tasks["uninstall"] = self.task_uninstall
 
+        mise_tools = [MiseTool(name=t.name, version=t.version) for t in self.tools]
+
         return MiseToml(
             envs=self.envs,
-            tools=self.tools,
+            tools=mise_tools,
             tasks=tasks
         )
 
