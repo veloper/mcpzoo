@@ -1,10 +1,11 @@
 pyproject.toml
 src/backend/__init__.py
+src/backend/agent.py
 src/backend/auth.py
 src/backend/enums.py
 src/backend/environment.py
 src/backend/fast_mcp.py
-src/backend/llmcli.py
+src/backend/jobs.py
 src/backend/main.py
 src/backend/mcp.py
 src/backend/mise.py

@@ -1,1 +1,2 @@
-backend: cd /app/backend && uv sync --link-mode=copy && uv run python -m uvicorn src.backend.main:app --host 0.0.0.0 --port 7998 --reload --reload-delay 2 --log-level trace
+backend: cd /app/backend && uv run python -m uvicorn src.backend.main:app --host 0.0.0.0 --port 7998 --reload --reload-delay 2 --log-level trace
+agent: cd /app/backend && uv run ./agent.sh

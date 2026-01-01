@@ -4,7 +4,6 @@ from enum import Enum
 from typing import Annotated, Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field, model_serializer
-
 from src.backend.enums import MCPServerTransport
 
 
@@ -31,7 +30,7 @@ class MCPServerJsonEntryStdIO(MCPServerJsonEntryBase):
     """MCP server entry for STDIO type."""
 
     type: Literal[MCPServerTransport.STDIO] = MCPServerTransport.STDIO
-    command: List[str] = Field(description="Command to start the MCP server")
+    command: str = Field(description="Command to start the MCP server")
     args: List[str] = Field(default_factory=list, description="Arguments for the command")
     envs: Dict[str, str] = Field(default_factory=dict, description="Environment variables for the MCP server")
 

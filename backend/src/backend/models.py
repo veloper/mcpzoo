@@ -1,35 +1,49 @@
-import json, logging, os, re, signal, subprocess
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, Integer, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from src.backend.enums import LogLevel, SyncTaskStatus
 from src.backend.fast_mcp import FastMcpServerProxyServerFile
 from src.backend.mcp import MCPServersJson, MCPServerTransport
 from src.backend.mise import MiseToml, MiseTool
+from src.backend.request_response_models import ServerTool
 from src.backend.settings import get_settings
 from src.backend.supervisor import SupervisorProgramConfig
 
 
+if TYPE_CHECKING:
+    from src.backend.server_directory import ServerDirectory
+
 settings = get_settings()
 
 
-# ===== SQLAlchemy Base and Database Models =====
+
+
+# ==========================
+# SQLAlchemy Base and Database Models
+# ==========================
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models."""
     pass
 
+# ==========================
+# Protocols
+# ==========================
 
-class ServerTool(BaseModel):
-    """Tool/language requirement with version for server configuration."""
-    name: str = Field(description="Tool/language name")
-    version: str | None = Field(default=None, description="Version requirement")
+
+# ==========================
+# Helper classes
+# ==========================
+
+
+# =========================
+# SQLAlchemy Models (suffixed with 'Record')
+# =========================
 
 class SyncTaskRecord(Base):
     """Background sync task database record."""
@@ -137,36 +151,159 @@ class ServerRecord(Base):
         )
 
 
-# ===== Pydantic Models =====
+class SystemSnapshotRecord(Base):
+    """System snapshot database record - captures system state at a point in time."""
+    __tablename__ = "system_snapshots"
+    # __table_args__ = {"extend_existing": True}
 
-class ServerCreateOrUpdateRequest(BaseModel):
-    """Input schema for creating or updating servers."""
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime)
+    cpu_percent: Mapped[float] = mapped_column(Float)
+    memory_percent: Mapped[float] = mapped_column(Float)
+    load_average: Mapped[list[float]] = mapped_column(JSON)  # [1min, 5min, 15min]
+
+    processes: Mapped[list["SystemSnapshotProcessRecord"]] = relationship(back_populates="snapshot")
+
+    def to_pydantic_model(self) -> "SystemSnapshot":
+        """Convert SQLAlchemy record to Pydantic model."""
+        return SystemSnapshot(
+            id=self.id,
+            timestamp=self.timestamp,
+            cpu_percent=self.cpu_percent,
+            memory_percent=self.memory_percent,
+            load_average=self.load_average,
+            processes=[p.to_pydantic_model() for p in self.processes],
+        )
+
+
+class SystemSnapshotProcessRecord(Base):
+    """Individual process data within a system snapshot."""
+    __tablename__ = "system_snapshot_processes"
+    # __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("system_snapshots.id"))
+    pid: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String)
+    state: Mapped[str] = mapped_column(String)
+    ppid: Mapped[int] = mapped_column(Integer, nullable=True)
+    uptime: Mapped[int] = mapped_column(Integer, nullable=True)
+    memory_rss: Mapped[int] = mapped_column(Integer, nullable=True)
+    memory_percent: Mapped[float] = mapped_column(Float, nullable=True)
+    cpu_percent: Mapped[float] = mapped_column(Float, nullable=True)
+    user: Mapped[str] = mapped_column(String, nullable=True)
+    command: Mapped[str] = mapped_column(String, nullable=True)
+    arguments: Mapped[str] = mapped_column(String, nullable=True)
+    cwd: Mapped[str] = mapped_column(String, nullable=True)
+    manager: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    exit_code: Mapped[int] = mapped_column(Integer, nullable=True)
+    num_threads: Mapped[int] = mapped_column(Integer, nullable=True)
+    nice: Mapped[int] = mapped_column(Integer, nullable=True)
+    io_read_bytes: Mapped[int] = mapped_column(Integer, nullable=True)
+    io_write_bytes: Mapped[int] = mapped_column(Integer, nullable=True)
+    
+    snapshot: Mapped["SystemSnapshotRecord"] = relationship(back_populates="processes")
+
+    def to_pydantic_model(self) -> "SystemSnapshotProcess":
+        """Convert SQLAlchemy record to Pydantic model."""
+        return SystemSnapshotProcess(
+            id=self.id,
+            snapshot_id=self.snapshot_id,
+            pid=self.pid,
+            name=self.name,
+            state=self.state,
+            ppid=self.ppid,
+            uptime=self.uptime,
+            memory_rss=self.memory_rss,
+            memory_percent=self.memory_percent,
+            cpu_percent=self.cpu_percent,
+            user=self.user,
+            command=self.command,
+            arguments=self.arguments,
+            cwd=self.cwd,
+            manager=self.manager,
+            created_at=self.created_at,
+            exit_code=self.exit_code,
+            num_threads=self.num_threads,
+            nice=self.nice,
+            io_read_bytes=self.io_read_bytes,
+            io_write_bytes=self.io_write_bytes,
+        )
+
+# ===========================
+# Pydantic Models
+# ===========================
+
+class SystemSnapshot(BaseModel):
+    """Primary Pydantic model for system snapshot."""
+    id: int | None = None
+    timestamp: datetime
+    cpu_percent: float
+    memory_percent: float
+    load_average: list[float]
+    
+    processes: list["SystemSnapshotProcess"] = Field(default_factory=list)
+    
+    def to_sa_record(self) -> SystemSnapshotRecord:
+        """Convert Pydantic model to SQLAlchemy record for persistence."""
+        record = SystemSnapshotRecord(
+            timestamp=self.timestamp,
+            cpu_percent=self.cpu_percent,
+            memory_percent=self.memory_percent,
+            load_average=self.load_average,
+        )
+        return record
+
+class SystemSnapshotProcess(BaseModel):
+    """Primary Pydantic model for individual process within a system snapshot."""
+    id: int | None = None
+    snapshot_id: int
+    pid: int
     name: str
-    transport: MCPServerTransport
-    url: str | None = None
+    state: str
+    ppid: int | None = None
+    uptime: int | None = None
+    memory_rss: int | None = None
+    memory_percent: float | None = None
+    cpu_percent: float | None = None
+    user: str | None = None
     command: str | None = None
-    arguments: list[str] = Field(default_factory=list)
-    port: int | None = None
-    envs: dict[str, str] = Field(default_factory=dict)
-    headers: dict[str, str] = Field(default_factory=dict)
-    tools: list[ServerTool] = Field(default_factory=list)
-    task_install: str | None = None
-    task_uninstall: str | None = None
-    autostart: bool = True
-    autorestart: str = "unexpected"
-    priority: int = 999
-    startsecs: int = 1
-    startretries: int = 3
-    stopsignal: str = "TERM"
-    stopwaitsecs: int = 10
-    log_level: LogLevel = LogLevel.INFO
-    stdout_logfile: str | None = None
-    stdout_logfile_maxbytes: int = 50_000_000
-    stdout_logfile_backups: int = 10
-    redirect_stderr: bool = True
-    stderr_logfile: str | None = None
-    stderr_logfile_maxbytes: int = 50_000_000
-    stderr_logfile_backups: int = 10
+    arguments: str | None = None
+    cwd: str | None = None
+    manager: str | None = None
+    created_at: datetime | None = None
+    exit_code: int | None = None
+    num_threads: int | None = None
+    nice: int | None = None
+    io_read_bytes: int | None = None
+    io_write_bytes: int | None = None
+    
+    def to_sa_record(self) -> SystemSnapshotProcessRecord:
+        """Convert Pydantic model to SQLAlchemy record for persistence."""
+        record = SystemSnapshotProcessRecord(
+            snapshot_id=self.snapshot_id,
+            pid=self.pid,
+            name=self.name,
+            state=self.state,
+            ppid=self.ppid,
+            uptime=self.uptime,
+            memory_rss=self.memory_rss,
+            memory_percent=self.memory_percent,
+            cpu_percent=self.cpu_percent,
+            user=self.user,
+            command=self.command,
+            arguments=self.arguments,
+            cwd=self.cwd,
+            manager=self.manager,
+            created_at=self.created_at,
+            exit_code=self.exit_code,
+            num_threads=self.num_threads,
+            nice=self.nice,
+            io_read_bytes=self.io_read_bytes,
+            io_write_bytes=self.io_write_bytes,
+        )
+        return record
 
 
 class Server(BaseModel):
@@ -310,7 +447,7 @@ class Server(BaseModel):
             servers_dict[self.name] = {
                 "type": self.transport,
                 "command": self.command,
-                "args": self.arguments
+                "args": self.arguments if self.arguments else []
             }
         else:
             servers_dict[self.name] = {

@@ -14,6 +14,7 @@ services:
     volumes:
       - ./docker/etc/overmind:/etc/overmind
       - ./docker/etc/supervisor:/etc/supervisor
+      - ./docker/entrypoint.sh:/entrypoint.sh
       - ./backend:/app/backend
       - ./data:/app/data
     networks:

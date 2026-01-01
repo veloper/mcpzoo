@@ -19,6 +19,7 @@ dependencies = [
     "click>=8.0.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.17.2",
+    "schedule>=1.2.0",
 ]
 
 [project.optional-dependencies]

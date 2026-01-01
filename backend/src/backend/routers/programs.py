@@ -3,7 +3,6 @@ import subprocess
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from src.backend.auth import verify_token
 from src.backend.models import Server
 from src.backend.services.database import DatabaseService, get_database_service
@@ -73,8 +72,8 @@ async def get_process_logs(
     if not server_data:
         raise HTTPException(status_code=404, detail=f"Server not found: {server_name}")
 
-    # Convert to Server to access supervisor config
-    server_config = Server(**server_data)
+    # server_data is already a Server object
+    server_config = server_data
     supervisor_conf = server_config.get_supervisor_conf()
 
     # Get log file paths from supervisor config

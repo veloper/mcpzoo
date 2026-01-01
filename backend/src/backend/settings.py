@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    
+    # Process Snapshot Retention (minutes)
+    process_snapshot_retention_minutes: int = 15 
 
     def __init__(self, **data):
         # Determine the correct .env file path before initialization

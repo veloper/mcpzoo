@@ -1,13 +1,13 @@
 import json
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from src.backend.auth import verify_token
-from src.backend.models import Server, ServerCreateOrUpdateRequest, timezone
+from src.backend.models import Server
+from src.backend.request_response_models import ServerCreateOrUpdateRequest
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.port_manager import PortManagerService, get_port_manager_service
@@ -143,7 +143,7 @@ async def get_server_logs(
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    log_file = f"/var/log/supervisor/mcp_{server.name}_{type}.log"
+    log_file = f"/var/log/supervisor/{server.name}_{type}.log"
     
     try:
         with open(log_file, 'r') as f:
@@ -208,8 +208,8 @@ async def get_mcp_config(
                     cmd_parts.extend(arguments)
 
                 mcp_servers[server_name] = {
-                    "command": cmd_parts[0],
-                    "args": cmd_parts[1:] if len(cmd_parts) > 1 else []
+                    "command": cmd_parts,
+                    "args": []
                 }
 
         elif transport in ["http", "sse"] and port:

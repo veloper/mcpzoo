@@ -17,6 +17,7 @@ Requires-Dist: psutil>=5.9.0
 Requires-Dist: click>=8.0.0
 Requires-Dist: sqlalchemy>=2.0.0
 Requires-Dist: alembic>=1.17.2
+Requires-Dist: schedule>=1.2.0
 Provides-Extra: dev
 Requires-Dist: pytest==7.4.3; extra == "dev"
 Requires-Dist: pytest-asyncio==0.21.1; extra == "dev"

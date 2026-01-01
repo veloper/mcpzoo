@@ -27,6 +27,7 @@ chmod 755 /app/servers
 
 mkdir -p /var/log/supervisor
 chmod 755 /var/log/supervisor
+echo -e "${GREEN}✓ Directories prepared${NC}"
 
 # Export APP_ENV and determine if dev mode
 export APP_ENV="${APP_ENV:-}"
@@ -38,7 +39,19 @@ else
     echo -e "${GREEN}✓ Production mode enabled${NC}"
 fi
 
-echo -e "${GREEN}✓ Directories prepared${NC}"
+echo -e "${GREEN}Ensuring backend app installed...${NC}"
+cd /app/backend
+uv sync --link-mode=copy
+if [ $? -ne 0 ]; then
+    echo -e "${RED}ERROR: Failed to install backend app dependencies${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ Backend app dependencies installed${NC}"
+fi
 
 echo -e "${GREEN}Starting supervisord...${NC}"
-exec /usr/bin/supervisord --nodaemon --configuration=/etc/supervisor/supervisord.conf --logfile=/dev/stdout --loglevel=info
+exec /usr/bin/supervisord \
+    --nodaemon \
+    --configuration=/etc/supervisor/supervisord.conf \
+    --logfile=/dev/stdout \
+    --loglevel=info
