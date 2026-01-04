@@ -8,10 +8,7 @@ A single docker container to run, manage, and monitor MCP servers in isolation.
 
 ## 🚀 Quick Start
 ```bash
-docker run -p 7998-8199:7998-8199 \
-    -e APP_USERNAME=admin \
-    -e APP_PASSWORD=changeme123 \
-    veloper/mcpzoo:latest
+docker run -p 7998-8199:7998-8199 -e APP_USERNAME=admin -e APP_PASSWORD=changeme123 veloper/mcpzoo:latest
 ```
 
 1. Open [http://localhost:7999](http://localhost:7999) and login with `$APP_USERNAME` / `$APP_PASSWORD`
