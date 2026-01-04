@@ -28,7 +28,7 @@ const FilesTabComponent = () => {
 
       try {
         const serverConfig = getCurrentServerConfig()
-        const response = await fetchServerFiles(editingId, serverConfig)
+        const response = await fetchServerFiles(editingId!, serverConfig)
         setFiles(response.files)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load files')

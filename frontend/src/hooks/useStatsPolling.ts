@@ -1,4 +1,4 @@
-// useStatsPolling removed — Stats are now handled inline by `useProcesses`.
+// useStatsPolling removed — Stats are now handled inline by `useSystemSnapshots`.
 export function useStatsPolling(): any {
-  throw new Error('useStatsPolling has been removed. Use `useProcesses` instead.')
+  throw new Error('useStatsPolling has been removed. Use `useSystemSnapshots` instead.')
 }

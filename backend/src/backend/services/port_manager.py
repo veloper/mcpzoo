@@ -3,7 +3,6 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel, Field
-
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import Logger, get_logging_service
 from src.backend.settings import get_settings
@@ -21,8 +20,8 @@ class PortManagerService(BaseModel):
     logger: Logger
     port_range: range = Field(default=range(7998, 8199))
 
-    dedicated_port_range: range = Field(default=range(7998, 8010))
-    mcp_server_port_range: range = Field(default=range(8011, 8199))
+    dedicated_port_range: range = Field(default=range(7998, 8009))
+    mcp_server_port_range: range = Field(default=range(8010, 8199))
    
 
     def get_taken_mcp_server_ports(self) -> set[int]:

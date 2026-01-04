@@ -18,7 +18,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Loader2 } from 'lucide-react'
 
 interface LogViewerProps {
-  serverId: string
+  serverId: number
   onClose: () => void
 }
 

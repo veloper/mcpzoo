@@ -41,7 +41,7 @@ fi
 
 echo -e "${GREEN}Ensuring backend app installed...${NC}"
 cd /app/backend
-uv sync --link-mode=copy
+mise exec uv@latest -- uv sync --link-mode=copy
 if [ $? -ne 0 ]; then
     echo -e "${RED}ERROR: Failed to install backend app dependencies${NC}"
     exit 1

@@ -24,19 +24,23 @@ RUN gunzip /tmp/overmind.gz \
     && chmod +x /usr/local/bin/overmind
 
 
-# Install only runtime dependencies
-RUN mise install python@3.10
-RUN mise install uv@latest
-RUN mise use -g python && pip install --user pipx
-RUN mise install "pipx:fastmcp@latest"
+# Ensure mise has required tools
+RUN mise use --global python@3.10
+RUN mise use --global uv@latest
+RUN pip install --user pipx
+RUN mise use --global "pipx:fastmcp@latest"
 RUN mise cache clean
+
+# Update PATH so that MISE shims are available globally
+ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:$PATH"
 
 # Copy built artifacts (build locally first with ./task prod docker build)
 COPY backend/ /app/backend/
 COPY frontend/dist/ /app/frontend/dist/
 
 # Install backend dependencies only
-RUN cd /app/backend && mise exec uv@latest -- uv sync --frozen
+# RUN cd /app/backend && mise exec uv@latest -- uv sync --frozen
+RUN cd /app/backend && uv sync --frozen
 
 COPY docker/ /
 RUN chmod +x /entrypoint.sh

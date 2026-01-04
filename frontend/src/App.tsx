@@ -9,7 +9,7 @@ import { ServerCreatePage } from './pages/ServerCreatePage'
 import { ServerEditPage } from './pages/ServerEditPage'
 import { ProgramsPage } from './pages/ProgramsPage'
 import { SyncsPage } from './pages/SyncsPage'
-import ProcessesPage from './pages/ProcessesPage'
+import SystemPage from './pages/SystemPage'
 import { Loader2 } from "lucide-react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
@@ -37,7 +37,7 @@ function AppContent() {
         <Route path="/servers/new" element={<ServerCreatePage />} />
         <Route path="/servers/:id/edit" element={<ServerEditPage />} />
         <Route path="/programs" element={<ProgramsPage />} />
-        <Route path="/processes" element={<ProcessesPage />} />
+        <Route path="/system" element={<SystemPage />} />
         <Route path="/syncs" element={<SyncsPage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

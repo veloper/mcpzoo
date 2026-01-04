@@ -162,8 +162,13 @@ class APIClient {
     return response.data
   }
 
-  async getProcessTree() {
-    const response = await this.client.get('/processes/tree')
+  async getSystemSnapshots(params?: {
+    page?: number
+    per_page?: number
+    sort?: string
+    dir?: 'asc' | 'desc'
+  }) {
+    const response = await this.client.get('/system/snapshots', { params })
     return response.data
   }
 

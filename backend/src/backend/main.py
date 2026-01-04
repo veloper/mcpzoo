@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from src.backend.auth import verify_token
 from src.backend.request_response_models import HomeResponse, HomeSummary
-from src.backend.routers import auth, processes, programs, servers, sync, tools
+from src.backend.routers import auth, programs, servers, sync, system, tools
 from src.backend.services.database import DatabaseService, get_database_service
 from src.backend.services.logging import logger
 from src.backend.services.supervisor import SupervisorService, get_supervisor_service
@@ -49,7 +49,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(servers.router)
 app.include_router(programs.router)
-app.include_router(processes.router)
+app.include_router(system.router)
 app.include_router(sync.router)
 app.include_router(tools.router)
 

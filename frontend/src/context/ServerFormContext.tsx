@@ -8,7 +8,7 @@ interface MiseTool {
 }
 
 interface MCPServerConfig {
-  id?: string
+  id?: number
   name: string
   transport: 'stdio' | 'http' | 'sse'
   url?: string
@@ -49,7 +49,7 @@ interface ServerFormContextType {
   url: string
   args: string[]
   port: number | null
-  editingId?: string | null
+  editingId?: number | null
 
   // Process state
   autostart: boolean

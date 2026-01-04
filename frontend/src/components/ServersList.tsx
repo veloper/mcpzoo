@@ -18,10 +18,10 @@ import { Loader2, RefreshCw, FileText, Trash2, Edit } from 'lucide-react'
 export function ServersList() {
   const { servers, loading, error, deleteServer, fetchServers } = useServers()
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState('')
-  const [viewingLogs, setViewingLogs] = useState<string | null>(null)
+  const [viewingLogs, setViewingLogs] = useState<number | null>(null)
 
   const handleSync = async () => {
     setSyncing(true)

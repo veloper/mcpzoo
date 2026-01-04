@@ -60,7 +60,7 @@ class SnapshotSystemJob(BaseJob):
     
     @cached_property
     def cpu_percent(self) -> float:
-        return psutil.cpu_percent(interval=0.1)
+        return psutil.cpu_percent(interval=0.5)
 
     @cached_property
     def memory_percent(self) -> float:

@@ -24,7 +24,7 @@ export function Sidebar({ className }: SidebarProps) {
     { label: 'Dashboard', path: '/', icon: Home },
     { label: 'Servers', path: '/servers', icon: Server },
     { label: 'Programs', path: '/programs', icon: Activity },
-    { label: 'Processes', path: '/processes', icon: Cpu },
+    { label: 'System', path: '/system', icon: Cpu },
     { label: 'Syncs', path: '/syncs', icon: RefreshCw },
   ]
 
