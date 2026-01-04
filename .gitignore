@@ -46,4 +46,4 @@ data/
 docker/data/tinydb.json
 
 # Cline
-.cline_rules
+.clinerules
