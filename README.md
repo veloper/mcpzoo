@@ -4,6 +4,10 @@ A single docker container to run, manage, and monitor MCP servers in isolation.
 
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause) [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://docker.com)
 
+## ≈ 1 Minute Overview
+
+https://github.com/user-attachments/assets/f8dc80f4-03a1-4fea-9633-c7a8dac18da0
+
 ---
 
 ## 🚀 Quick Start
